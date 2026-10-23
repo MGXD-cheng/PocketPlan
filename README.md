@@ -67,7 +67,7 @@
 | **专注模式** | 横屏全屏时钟 + 已专注计时，轻触退出 |
 | **时钟模式** | 横屏全屏：时间、日期、下一个闹钟、前 4 条倒数日；轻触 3 下退出 |
 | **自动休眠** | 无操作 N 分钟关背光，轻触唤醒；闹钟响铃与时钟模式期间不熄屏 |
-| **网页控制台** | 设备自带单页应用（约 34 KB，内嵌在固件里）：计划、打卡、倒数日、闹钟、文件上传、AI、设置 |
+| **网页控制台** | 设备自带单页应用（约 36 KB，`EMBED_FILES` 内嵌在固件里）：计划、打卡、倒数日、闹钟、文件上传、AI、设置 |
 | **WebDAV** | 80 端口同时是 WebDAV，资源管理器 / Finder 可直接挂载读写 TF 卡；**默认关闭**（没有认证），设置里打开 |
 | **配网** | 首次开机开热点 `PocketPlan-XXXX`（密码 `pocketplan`），网页填 SSID/密码；长按 BOOT 3 秒清除凭据 |
 
@@ -110,7 +110,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/pp_build.ps1 -Command 
 
 `tools/pp_flash.ps1` 只写分区表（0x8000）+ app（0x20000），保留 NVS 里的配置与配网信息；`tools/pp_serial.ps1 -Port COM5 -Seconds 30` 抓串口日志（Windows 下 `DtrEnable=false` 很关键，否则一开串口就把板子复位）。
 
-字体是**预生成**的 C 数组（`pocketplan/main/fonts/pp_font_*.c`，合计约 14 MB，21,318 个字形），编译**不需要**装 `lv_font_conv`；要改字号或增删字符集才需要，见 [`.fontgen/gen2.sh`](.fontgen/gen2.sh) 与 `pocketplan/chk_chars.py`。
+字体是**预生成**的 C 数组（`pocketplan/main/fonts/pp_font_*.c`，源码合计约 15 MB（编进固件约 3 MB），21,318 个字形），编译**不需要**装 `lv_font_conv`；要改字号或增删字符集才需要，见 [`.fontgen/gen2.sh`](.fontgen/gen2.sh) 与 `pocketplan/chk_chars.py`。
 
 ## 首次使用
 
@@ -141,7 +141,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/pp_build.ps1 -Command 
 
 默认**关闭**（没有认证，开了等于同网段谁都能读写 TF 卡）。打开方式：设备「设置 → 网络 → 网页映射」，或网页「设置 → 网页映射」。
 
-打开后 Windows 资源管理器「映射网络驱动器」填 `http://<设备IP>/`（需开启 WebClient 服务，且只支持 HTTP，不支持 HTTPS），macOS Finder「连接服务器」填同一个地址。关掉时十个 WebDAV 方法统一返回 `404 WebDAV is disabled`，HTTP 控制台不受影响。
+打开后 Windows 资源管理器「映射网络驱动器」填 `http://<设备IP>/`（需开启 WebClient 服务，且只支持 HTTP，不支持 HTTPS），macOS Finder「连接服务器」填同一个地址。关掉时所有 WebDAV 方法（`OPTIONS` / `PROPFIND` / `PROPPATCH` / `MKCOL` / `MOVE` / `DELETE` / `PUT` / `LOCK` / `UNLOCK` / `HEAD` / `GET`）统一返回 `404 WebDAV is disabled`，同一端口上的 HTTP 控制台不受影响。
 
 ## 目录结构
 
@@ -219,7 +219,7 @@ PocketPlan/
 - [x] M10–M12：时钟模式、专注模式、自动休眠、闹钟、数据存 SD、暗色时钟
 - [x] M13–M14：网页端 6 tab 重构、WebDAV、按钮轮廓、串口截图工具链
 - [ ] M15：OTA 升级（用上 12% 剩余空间）
-- [ ] M15：字体子集化（14 MB 字体是固件的 80%，可以按需裁到 3 MB）
+- [ ] M15：字体子集化（字体占固件 ~80%，按需裁字能省下 MB 级空间）
 - [ ] M15：PCM5102A 焊上后的 mp3 播放（helix 解码 + I2S）
 - [ ] M16：网页端简单认证（密码/Token），然后把 WebDAV 默认打开
 
