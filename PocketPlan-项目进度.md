@@ -1,6 +1,6 @@
 # PocketPlan 项目进度报告
 
-> 生成时间：2026-10-24 03:1x（本地，M13.1 时钟模式改横屏 + 显示下一个闹钟 + 三击退出；顺带修掉每次开机的 WiFi 竞争报错）
+> 生成时间：2026-10-24 03:3x（本地，M14 自动休眠 + 开源发布到 GitHub；此前 M13.1 把时钟模式改成横屏）
 > 设备：Waveshare **ESP32-S3-Touch-LCD-2.8B**（2.8" 480×640 RGB 屏 + GT911 触摸 + 8MB PSRAM + 16MB Flash）
 > 代码位置：`D:\Users\PC\Desktop\esp32-mgxd\pocketplan\`
 > 设计文档：`D:\Users\PC\Desktop\esp32-mgxd\PLAN-BOARD-DESIGN.md`（v0.2）
@@ -87,6 +87,8 @@ BOOT 按键                GPIO0（长按可清除 WiFi 凭据）
 [x] M12.1 REST handler 槽位扩容（32 → 48，修 WebDAV HEAD/GET 被挤掉）
 [x] M13 三项修正（打卡圈纯黑无白边 / 「时钟模式」只有时间+倒数日 / 音乐 tab 先显示「读取中」再异步分批建行，6.2s → 0.7–1.5s）
 [x] M13.1 时钟模式改横屏（640×480）+ 显示下一个闹钟 + 去掉退出提示改为轻触 3 下退出；WiFi 凭据竞争修复（不再出现 sta is connecting / cannot set config）
+[x] M14 自动休眠（无操作 N 分钟关背光，轻触唤醒；闹钟响铃与时钟模式期间不熄屏；设置页 chip + 网页下拉）
+[x] M14.1 开源发布（README / MIT LICENSE / .gitignore；github.com/MGXD-cheng/PocketPlan）
 ```
 
 ### 3.1 已实测通过的清单（M1 + M3–M9，2026-10-23 22:1x）
@@ -249,6 +251,39 @@ BOOT 按键                GPIO0（长按可清除 WiFi 凭据）
 - 三击退出用**真实事件**验证过：tour 里 `lv_obj_send_event(root, LV_EVENT_CLICKED, NULL)` 连发 3 次，600ms 后 `pp_clockmode_active()` 返回 0，串口打出 `---TOURTAPEXIT active=0---`。这条很关键——时钟模式屏幕上没有任何按钮，三击失效等于把设备锁死在时钟页。
 
 
+### 3.7 M14 自动休眠（2026-10-24 03:3x，本轮新增）
+
+用户原话（m03777）：「加上自动休眠功能，可在设置中开关」。需求很小，真正要想清楚的是**「空闲」从哪里来**。
+
+| 环节 | 落地方案 |
+|---|---|
+| 判空闲 | 直接用 LVGL 的 **inactivity clock**：每个 indev 的 read 回调都会给 `disp->last_activity_time` 打戳，`lv_display_get_inactive_time(NULL)` 就是「多久没人碰屏幕」。自己记 tick 会漏掉键盘/滚轮/未来新增的输入设备，也会漏掉「界面自己滚动」与「人真的在操作」的差别 |
+| 熄屏 | `pp_board_backlight(0)`（LEDC duty=0），面板不停、LVGL 不停、WiFi 不停 |
+| 唤醒 | 发现 inactivity < 700ms（`WAKE_WINDOW_MS`）就恢复 `cfg->brightness`。**唤醒不需要额外事件**：人一碰，LVGL 的时钟自己归零 |
+| 轮询 | `sleep_task`（栈 3072 / 优先级 2）每 500ms 看一次，读时钟前 `lvgl_port_lock(100)` |
+| 不熄屏的例外 | `pp_alarms_ringing()`（响铃必须看得见）与 `pp_clockmode_active()`（时钟模式是「常亮台钟」，熄屏就没意义） |
+| 设置项 | `config.json` 新增 `auto_sleep`（bool，默认 true）与 `sleep_min`（1..60，默认 5）。设置页「屏幕」区块两行 chip：开/关 + 每 1/3/5/10/30 分；网页端「自动休眠」卡片是复选框 + 下拉 |
+| REST | `/api/status` 多一个 `asleep`；`/api/config` GET/POST 收发 `auto_sleep`/`sleep_min` |
+
+**三个必须记住的点**
+
+- **熄屏 ≠ 省电模式**：只关背光（面板 0.2W 左右），CPU、PSRAM、WiFi、闹钟任务全都照常跑。要做真省电得进 light sleep，但那样 WiFi 掉线、闹钟要靠定时器唤醒，复杂度翻几倍 —— 这版选的是「一碰就亮」而不是「一躺十天」。
+- **网页保存设置时可能正处在熄屏状态**：`h_config_post` 里保存完如果发现 `!pp_autosleep_active()` 就顺手把背光按新亮度点回去，否则用户在网页上改完亮度，设备仍是黑屏，会以为设置没生效。
+- **tour 固件必须临时关掉自动休眠**：tour 全程不碰屏幕，5 分钟后屏幕自己就黑了，16 块截图会全是黑的。所以 `shot.c` 的 tour 在开头把 `auto_sleep` 置 false、结尾再存回用户的值（这一条踩过一次，见 §七 第 44 条）。
+
+### 3.8 M14.1 开源发布（github.com/MGXD-cheng/PocketPlan）
+
+| 项 | 内容 |
+|---|---|
+| 仓库 | <https://github.com/MGXD-cheng/PocketPlan>（public，MIT） |
+| 入库内容 | 102 个文件：`pocketplan/` 全部源码 + 4 个字体 `.c` + `sdkconfig`/`sdkconfig.defaults`/`partitions.csv`/`dependencies.lock`、19 张真机截图、`tools/` 里的构建/烧录/串口脚本、`.fontgen/` 字体生成脚本、三份报告 + 设计文档、README 与 LICENSE |
+| 刻意不入库 | `pocketplan/build`（约 234MB）、`pocketplan/managed_components`（184MB）、`*.bin/*.elf/*.map`、所有串口日志与临时截图、早期实验目录（`case/ demo/ idf/ i2cscan/ ref/ ref2/ sdtest/ xz/`）、早期下载的 `tools/arduino-cli.exe`/`.zip`（55MB，与本项目无关） |
+| README | 中文：一句话简介 + 3 张截图 + 功能表 12 行 + 硬件表（含引脚归属）+ 编译/烧录/首次使用 + 目录结构 + REST API 表 + 已知限制 + 许可与致谢 |
+| 许可证 | MIT（`Copyright (c) 2026 PocketPlan contributors`），第三方组件（ESP-IDF / LVGL / esp_lvgl_port / cJSON / esp_lcd 驱动）各自遵循原许可 |
+
+**一个环境事实（写下来免得下次再查）**：这台机器所在网络 **`git push` 到 `github.com:443` 直接连不上**（`github.com` 被 DNS 解析到 `20.205.243.166`，该 IP 无响应；而 `api.github.com`、`codeload.github.com` 以及 `github.com` 的 `140.82.112.3` 等 IP 都是通的）。所以首次发布是**走 GitHub REST 的 Git Data API** 完成的：`POST /git/blobs`（102 个，base64）→ `POST /git/trees` → `POST /git/commits` → `PATCH /git/refs/heads/main`（force）。本地 `git` 仓库与远端是同一份内容，但 commit sha 不同（作者时间戳不同）；下次有网时 `git push -f origin main` 或直接重新 clone 覆盖即可对齐。
+
+
 ---
 
 ## 四、代码结构
@@ -259,7 +294,7 @@ D:\Users\PC\Desktop\esp32-mgxd\pocketplan\
 ├─ partitions.csv                分区表：nvs/otadata/phy/ota_0/ota_1/storage(SPIFFS 1MB @0x800000)
 ├─ sdkconfig.defaults            默认配置（PSRAM / FATFS / LVGL / HTTPD / SPIFFS …）
 ├─ main\
-│  ├─ CMakeLists.txt             SRCS = 25 个 .c + 4 个字体 .c，EMBED_FILES "www/index.html"
+│  ├─ CMakeLists.txt             SRCS = 26 个 .c + 4 个字体 .c，EMBED_FILES "www/index.html"
 │  ├─ idf_component.yml          组件依赖（st7701 / gt911 / tca9554 / lvgl 9.5 / lvgl_port 2.9 / cjson）
 │  ├─ app_main.c                 启动流程 + BOOT 长按清 WiFi 凭据
 │  ├─ board.c                    背光 / I2C / TCA9554 / ST7701 RGB / GT911 / LVGL(8KB 任务栈) / SD
@@ -337,7 +372,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 脚本内部做的事（缺一步就编译失败）：`$env:MSYSTEM=$null` → 设 `IDF_PATH` / `IDF_TOOLS_PATH` / `PYTHONUTF8=1` → `. activate.py --export` → 执行传入的 `-Command`。
 
 - 纯增量 **40–90 秒**；改了 `sdkconfig` 会触发全量重编，**约 15 分钟**
-- 成功标志：`Project build complete.` + `pocketplan.bin binary size 0x3782f0 bytes. 0x77d10 bytes (12%) free.`（3,638,000 字节，app 分区 0x3f0000 = 4,128,768 字节）
+- 成功标志：`Project build complete.` + `pocketplan.bin binary size 0x378f10 bytes. 0x770f0 bytes (12%) free.`（3,641,104 字节，app 分区 0x3f0000 = 4,128,768 字节）
 - 编译**必须后台跑并轮询日志**（前台会超时）；日志是 UTF-16，用 `Select-String` 读，别用 `cat`
 
 ### 5.3 烧录
@@ -531,9 +566,24 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 | 三击退出 | 串口 `---TOURTAPEXIT active=0---`：tour 向 overlay 连发 3 次真实 `LV_EVENT_CLICKED`，600ms 后 `pp_clockmode_active()` 已是 0（overlay 被 `lv_async_call` 删掉） |
 | 下一个闹钟算法 | 设备上只有一个启用闹钟 `a1 07:30 起床（days=127 每天）`，凌晨 02:54 抓到的是**当天** 07:30；同一个算法在「今天的点已过」时会输出 `闹钟 明天 07:30 · 起床`，没有启用闹钟时整行隐藏（`next_alarm_text()` 返回 false） |
 | 最终固件启动 | `boot17.log`：`display ready`@2.09s、`plans: loaded 3 plans, today 2026-10-24`、`alarms: loaded 1 alarms`、`ready`@4.15s、`station got ip 192.168.10.104`@4.45s、`clock: RTC updated from SNTP`@5.01s，**无 E 行**（连 `wifi:sta is connecting` 也没有了） |
-| 二进制 | `0x3782f0`（3,638,000 字节），app 分区剩 `0x77d10`（490,768 字节，12%） |
+| 二进制 | `0x3782f0`（3,638,000 字节），app 分区剩 `0x77d10`（490,768 字节，12%）；M14 终版 `0x378f10`，见 §6.10 |
 
 **顺手修掉的 WiFi 竞争**（§七 第 42 条）：这一轮之前在**每次开机**都能看到 `E wifi: sta is connecting, cannot set config` ×6 + `E net: set STA config failed: ESP_ERR_WIFI_STATE`。真因是 `WIFI_EVENT_STA_START` 里已经用 NVS 里的同一份凭据调了 `esp_wifi_connect()`，而 `apply_saved_credentials()` 又去 `disconnect + set_config`，`disconnect` 弹不掉正在进行的连接。现在先用 `esp_wifi_get_config()` 比对驱动里的 ssid/password：一样就什么都不做；真换了凭据才 `esp_wifi_stop() → set_config() → esp_wifi_start()`。修完 `boot17.log` 里一条 E 行都没有，STA 照样在 4.45s 拿到 IP。
+
+### 6.10 M14 自动休眠真机复测（2026-10-24 03:2x，串口 tour 固件）
+
+`shot.c` 临时 `PP_SCREEN_TOUR=1`，串口抓 17 块截图 + 4 个状态 marker，全部命中：
+
+| 项 | 结果 |
+|---|---|
+| 熄屏 | `---TOURSLEEP asleep=1 duty=0---`：把 `sleep_min` 设成 1、等 2.5s 后 `pp_autosleep_active()` 为真，且 `ledc_get_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0)` 读回 **0** —— 不是「以为关了」，是背光寄存器真的为 0 |
+| 唤醒 | tour 用 `lv_display_trigger_activity(NULL)` 模拟一次触摸，1.5s 后 `---TOURWAKE asleep=0 duty=603---`：状态回 false、duty 恢复 603（亮度 59% × 1023 ≈ 603） |
+| 设置页开关 | 截图 `05-settings.png`（已换成这一版）：额外加了一段 tour，把 `auto_sleep` 真的打开再进设置页 → 「自动休眠 **开**」「休眠时间 **每 5 分**」，下面一行提示「熄屏后轻触屏幕唤醒；闹钟响铃和时钟模式不会熄屏」 |
+| 字号 chip 反白 | 同一张截图顺带确认了 M13 那个没抓到的修复：选中「16」是**黑底白字**，未选中「20」是白底黑框 |
+| 其余 16 块 | 计划/倒数+闹钟/文件/音乐/AI/键盘/响铃浮层/专注/时钟暗/时钟亮/三击退出/阅读器 16/阅读器 20 全部与 M13.1 一致（这次没动它们，属于回归） |
+| 最终固件启动 | `boot18.txt`：`display ready`@2.09s、`plans: loaded 3 plans, today 2026-10-24`、`alarms: loaded 1 alarms`、`ready`@4.11s、`station got ip 192.168.10.104`@4.55s、`clock: RTC updated from SNTP`@5.98s；`E (` 计数 **0**，只有三条无害 `W`（3wire_spi 删 CS、GPIO16 冲突、SD 输入延迟） |
+| 二进制 | `0x378f10`（3,641,104 字节），app 分区剩 `0x770f0`（487,664 字节，12%） |
+| 未做到 | 设备这次落在 mesh 的另一个节点上（`192.168.10.104`），PC 在 `192.168.0.x` 不路由，**`/api/config` 里 `auto_sleep`/`sleep_min` 两个字段没能从 PC 用 curl 验证**；字段收发是照着既有 `focus_dark`/`cache_sd` 的同一套代码写的，属于代码级确认，未做端到端 |
 
 
 ---
@@ -584,6 +634,11 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 | 40 | 时钟模式屏幕上一个按钮都没有，三击万一失效设备就锁死在时钟页 | 在对象自己的事件回调里 `lv_obj_delete(self)` 属于 LVGL 明令禁止的用法（删完回调还在栈上跑） | 点击计数到 3 时只调 `lv_async_call(close_async, NULL)`，下一轮 LVGL 循环再删；tour 里用 `lv_obj_send_event(root, LV_EVENT_CLICKED, NULL)` 连发 3 次真实事件验证，串口 `---TOURTAPEXIT active=0---` |
 | 41 | 时钟模式横屏排版：flex 容器 + 90° 旋转子对象的测量/换行不可控 | 旋转是绘制期变换，布局期仍按未旋转的包围盒算，`LV_SIZE_CONTENT` 与 `flex` 组合容易错位 | 不赌布局：倒数日改成 4 个**固定坐标** label（`CD_TOP + i*32`），空行加 `LV_OBJ_FLAG_HIDDEN`，页面只在 `landscape` 坐标里手排 |
 | 42 | 串口 tour 抓图偶发一块解不出来：`binascii.Error: Incorrect padding` / `image file is truncated` | 115200 串口高速输出偶发丢字符，base64 被截断 | `decodetour.py` 补 `=` 到 4 的倍数 + `ImageFile.LOAD_TRUNCATED_IMAGES = True` + 逐块 try/except，坏块跳过不影响其余 15 块 |
+| 43 | 自动休眠的「多久没人操作」自己算不准 | 想用 `lv_tick_get()` 减「最后一次事件」时间，但输入来自多个 indev（触摸、键盘），还会被程序自己刷新误导 | 直接用 LVGL 的 `lv_display_get_inactive_time(NULL)`：每个 indev read 都会给 `disp->last_activity_time` 打戳，天然覆盖所有输入；模拟一次触摸也用 `lv_display_trigger_activity(NULL)`（tour 就是这么验的） |
+| 44 | tour 固件跑完 16 张截图，屏幕在中途黑了、后半段全黑 | tour 全程不碰屏幕，自动休眠（默认 5 分钟）到点就关背光——截图截的是背光关掉后的画面 | tour 开头把 `auto_sleep` 置 false，结尾再读用户原值写回 `config.json`（tour 中途多次 `pp_config_save()`，不写回就把 false 永久留在配置里） |
+| 45 | 网页上改亮度/主题，设备端看起来「没反应」 | 设备正处在熄屏状态，背光还是 0 | `h_config_post` 保存完检查 `pp_autosleep_active()`，若已熄屏就按新亮度把背光点回去；切「数据存 SD 卡」时同理 |
+| 46 | `git push` 到 github.com 一直 `Failed to connect ... after 21132 ms`，但 `curl https://api.github.com` 正常 | 这个网络到 `github.com` 的 A 记录（`20.205.243.166`）被丢包，而 `20.205.243.168`（api）、`20.205.243.165`（codeload）、`140.82.112.3` 都通 —— 换 IP 用 `curl --resolve` 立刻 200 | 用 GitHub **Git Data API** 发布：blobs → tree → commit → `PATCH /git/refs/heads/main`（force），102 个文件 15.6MB，一次成功；`git` 本身仍保留本地提交，待网络正常时再对齐 |
+| 47 | 本地 `git add -A` 把 55MB 的 `tools/arduino-cli.exe/.zip`、16 张临时截图、`_check.js` 也加进了索引 | 工作区是「项目 + 一堆早期实验」混住的，`.gitignore` 只写了实验目录名 | `git rm --cached` 剔除 + `.gitignore` 补 `tools/arduino-cli.*`、`pocketplan/n[2-4]*.png`、`pocketplan/main/www/_check.js`，再 `commit --amend`；入库前一定先 `git ls-files | wc -l` 和 `git ls-tree -r -l | sort -k4 -nr | head` 看一眼 |
 
 ---
 
@@ -597,7 +652,7 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 - `W (2048) gpio: conflict found for GPIO[16]` —— TP_INT 被复位代码与触摸驱动各配置一次，无害，待清理
 - **字体只有 16px / 20px 两档点阵**，没有中间字号：15px、18px 这类需求要么放大要么缩小；1bpp 也没有反锯齿，斜笔画在极小字号下会比矢量字体硬
 - 字体源文件 `.c` 合计 ~14.7MB，全量重编时编译器要多花几十秒；增量构建不受影响
-- 固件已到 **3.64MB / app 分区 3.94MB（0x3782f0 = 3,638,000 字节，剩 12%，0x77d10 = 490,768 字节）**，再加功能（OTA、更多字体档位、MP3 解码）前必须先瘦身（例如裁掉 0x4E00-0x9FA5 里用不到的字，或把 20px 改成按需生成）
+- 固件已到 **3.64MB / app 分区 3.94MB（0x378f10 = 3,641,104 字节，剩 12%，0x770f0 = 487,664 字节）**，再加功能（OTA、更多字体档位、MP3 解码）前必须先瘦身（例如裁掉 0x4E00-0x9FA5 里用不到的字，或把 20px 改成按需生成）
 - Windows 映射网络驱动器连 HTTP WebDAV 需要开 WebClient 服务；**尚未在真资源管理器里实测**（curl 层面全通）
 - 倒数日在**设备端只读**：屏幕没有中文输入法，增删改只能在网页端做（这是故意的取舍，不是没做完）
 - 专注模式目前只是「横屏时钟 + 已专注计时」：没有番茄钟倒计时/提醒、没有白噪音、不统计历史专注时长，退出即清零
@@ -613,6 +668,11 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 - **时钟模式的「下一个闹钟」只显示最近一个启用的闹钟**：不显示再往后的，也不显示「今天已响过」；全部关掉时整行隐藏
 - **网页端 M12 那六项功能仍只做了代码级检查**：M13 时设备已回到 `192.168.0.106`（PC 同网段、REST 全通），但**网页 UI 的交互观感**（乐观更新是否顺滑、chip 点击手感）需要人拿浏览器点一遍，机器验不了
 - SD 卡上的数据目录是 `/sdcard/.pocketplan/`（隐藏目录）：网页端「文件」列表会显示它，删掉等于清空计划/倒数/闹钟/AI 历史
+- **自动休眠只关背光，不进 light sleep**：WiFi、CPU、闹钟任务照常跑，所以待机功耗仍在几十 mA 量级；换来的是「一碰就亮」且闹钟不会漏。要真省电得进 light sleep + 定时器唤醒，那是另一档复杂度
+- **熄屏没有锁**：一碰就亮，没有 PIN/图案锁。设备和「关机」的区别就是屏幕黑不黑
+- **响铃与时钟模式不熄屏**是有意的例外：闹钟响时必须看得见，时钟模式本来就是当台钟用；代价是响铃 60 秒内屏幕一直亮着
+- 休眠时长只有 1/3/5/10/30 五档（屏幕 chip 循环切换，网页是下拉），没有「不熄屏」以外的自定义值；30 分钟以上只能再进网页设置（上限 60）
+- **GitHub 仓库的首个 commit 是走 API 建的**（见 §3.8）：本地 `git` 的 commit sha 与远端不同，在这台机器上 `git push` 也不通（`github.com:443` 被丢包），要同步得先换网络或继续用 API
 
 ---
 
@@ -627,6 +687,8 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 6. **稳定性长跑**：让板子连续挂机 24h+，看 `status_task` 打出的内部堆是否缓慢下降（当前 ~124KB 稳定），以及 WiFi 多次断线后的指数退避是否真的收敛到 60s
 7. 可选：闹钟贪睡/自定义时长、专注模式番茄钟倒计时与白噪音、专注时长历史统计、倒数日支持农历节日、阅读器书签/目录、音乐页递归扫描
 8. 可选（M13 遗留）：音乐列表超过 200 首改虚拟列表；时钟模式超过 4 条倒数日改翻页/滚动
+9. **开源后续**（M14.1 刚起步）：给仓库加 Issue 模板 / Release（附 `pocketplan.bin` 与烧录说明）/ 一张实物照片进 README；`tools/pp_build.ps1` 里写死的 `IDF_PATH=D:\esp\esp-idf-v6.1` 改成参数或环境变量
+10. 可选（M14 遗留）：自动休眠加「只在电池供电时休眠」与 light sleep 档位；时钟模式加「熄屏但保留画面」（面板 standby）
 
 ---
 
@@ -638,10 +700,15 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 | `D:\Users\PC\Desktop\esp32-mgxd\PocketPlan-项目进度.md` | 本文档 |
 | `D:\Users\PC\Desktop\esp32-mgxd\SD-REPORT.md` | SD 卡诊断报告 + §8 PocketPlan 读卡实测 |
 | `D:\Users\PC\Desktop\esp32-mgxd\PORT-REPORT.md` | 板子硬件移植报告 + §7 PocketPlan 板级复用 |
-| `D:\Users\PC\Desktop\esp32-mgxd\pocketplan\` | PocketPlan 固件工程（24 个 .c + 4 个字体 .c + 内嵌网页） |
+| `D:\Users\PC\Desktop\esp32-mgxd\pocketplan\` | PocketPlan 固件工程（26 个 .c + 4 个字体 .c + 内嵌网页） |
 | `D:\Users\PC\Desktop\esp32-mgxd\pocketplan\main\alarms.c` | 闹钟：alarms.json 读写 + 每秒匹配 + 蜂鸣器节奏 + 全屏浮层（M12 新增） |
+| `D:\Users\PC\Desktop\esp32-mgxd\pocketplan\main\autosleep.c` | 自动休眠：轮询 LVGL inactivity clock，到点关背光、一碰恢复；响铃与时钟模式豁免（M14 新增） |
+| `D:\Users\PC\Desktop\esp32-mgxd\README.md` | 开源首页（功能表 / 硬件表 / 编译烧录 / REST API / 已知限制） |
+| `D:\Users\PC\Desktop\esp32-mgxd\LICENSE` | MIT 许可证 |
+| `D:\Users\PC\Desktop\esp32-mgxd\.gitignore` | 排除 build/、managed_components/、二进制、日志、早期实验目录 |
+| <https://github.com/MGXD-cheng/PocketPlan> | 开源仓库（M14.1 发布，102 个文件） |
 | `D:\Users\PC\Desktop\esp32-mgxd\pocketplan\main\clockmode.c` | 时钟模式：横屏全屏，只有时间 + 日期 + 下一个闹钟 + 前 4 条倒数日；轻触 3 下退出（M13 新增，M13.1 改横屏） |
-| `D:\Users\PC\Desktop\esp32-mgxd\pocketplan\docs\screenshots\` | 19 张真机截图（01–19，M13 新增 15–19） |
+| `D:\Users\PC\Desktop\esp32-mgxd\pocketplan\docs\screenshots\` | 19 张真机截图（01–19；M14 用带「自动休眠 开/每 5 分」的新图替换了 05-settings.png） |
 | `D:\Users\PC\Desktop\esp32-mgxd\tools\pp_build.ps1` | 编译封装（处理 MSYSTEM、激活 IDF、跑 idf.py） |
 | `D:\Users\PC\Desktop\esp32-mgxd\tools\pp_flash.ps1` | 烧录封装（分区表 0x8000 + app 0x20000） |
 | `D:\Users\PC\Desktop\esp32-mgxd\tools\pp_serial.ps1` | 串口日志（`-NoReset` 只看输出） |

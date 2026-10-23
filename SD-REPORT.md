@@ -150,5 +150,10 @@ PocketPlan 固件（ESP-IDF v6.1 + LVGL 9.5）在同一张卡上的实测结果�
 - **数据迁移加了读回校验**：M12 末期出现过一次`alarms: loaded 0 alarms`（闹钟丢失），当时的迁移流程是「写目标 → 删源」；现在写完会**读回比对长度**，不一致就 `ESP_LOGE(TAG, "%s read back short after migration, keeping both", dst)` 并保留两份、不删源。数据丢失的具体触发条件没有复现出来（同一流程后来又跑通多次），所以结论只能是「加固 + 如实记录」，不能说已根因修复。
 - **隐藏目录的两面性**：数据放 `/sdcard/.pocketplan/` 后，网页端「文件」页和 WebDAV 都能看到这个目录（隐藏属性在 FAT/exFAT 上不等于不可见）。误删它等于清空计划/倒数日/闹钟/AI 历史 —— 建议用户不要动；要备份就整目录拷走。
 
+**再补一条（2026-10-24 03:4x，M14 自动休眠之后）**
+
+- **迁移自检从「每次 tour 必跑」改成开关**：M12 末期那次 `alarms: loaded 0 alarms`（闹钟丢失）就发生在 tour 自动跑「迁到卡 → 迁回 /lfs」的环节里。现在 shot.c 里这段被 `#if PP_TOUR_CACHE`（`pocketplan/main/shot.c:45`，默认 **0**）包住，只有显式打开才会执行迁移；日常 tour 只截图不动数据文件。要复测迁移时再 `-D PP_TOUR_CACHE=1` 编一版，跑完记得改回来。
+- 另外确认：M14 的自动休眠**不改任何 SD 卡行为** —— 它只写 LEDC 的背光 duty（`pocketplan/main/autosleep.c`），不 unmount、不关 SDMMC 电源。所以熄屏期间音乐扫描、目录缓存都还在，唤醒后不必重新挂载。
+
 
 

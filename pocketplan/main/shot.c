@@ -38,7 +38,7 @@ void pp_ai_demo_keyboard(void);
 #define TAG "shot"
 
 #ifndef PP_SCREEN_TOUR
-#define PP_SCREEN_TOUR 1 /* TEMP: M14 auto sleep verification tour */
+#define PP_SCREEN_TOUR 0
 #endif
 
 /* The cache round trip is destructive, so the tour skips it unless asked. */

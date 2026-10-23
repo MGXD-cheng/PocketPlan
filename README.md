@@ -7,6 +7,7 @@
 ![计划](pocketplan/docs/screenshots/01-plans.png)
 ![阅读](pocketplan/docs/screenshots/06-reader-16.png)
 ![时钟模式](pocketplan/docs/screenshots/18-clock-mode-landscape-dark.png)
+![设置](pocketplan/docs/screenshots/05-settings.png)
 
 ## 功能
 
@@ -144,4 +145,4 @@ MIT，见 [LICENSE](LICENSE)。第三方组件（ESP-IDF、LVGL、esp_lvgl_port�
 
 - [LVGL](https://lvgl.io/) 与 [esp_lvgl_port](https://github.com/espressif/esp-bsp)
 - Waveshare 的 ESP32-S3-Touch-LCD-2.8B 原理图与示例
-- 以及这一路上被撞过的每一个坑，都写在 [`PocketPlan-项目进度.md`](PocketPlan-项目进度.md) 的「踩过的坑」一节里（42 条）。
+- 以及这一路上被撞过的每一个坑，都写在 [`PocketPlan-项目进度.md`](PocketPlan-项目进度.md) 的「踩过的坑」一节里（47 条）。

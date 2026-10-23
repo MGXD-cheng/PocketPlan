@@ -203,5 +203,21 @@ M13 里用户报「计划勾选完成的圈圈有白边」，根因不在面板�
 | 截图方向 | 串口/HTTP 取回的是竖屏 480×640 帧缓冲，PC 端要 `PIL.Image.rotate(90, expand=True)` 才是人眼看到的横屏；`docs/screenshots/20/21-*.png` 已经转好 |
 | 验证 | `---TOURCLOCK---` / `---TOURCLOCKLIGHT---` 两块截图内容逐字一致，只是黑白相反；`---TOURTAPEXIT active=0---` 证明「轻触 3 下退出」用真实 `LV_EVENT_CLICKED` 也能关掉 overlay |
 
+### 7.7 背光就是「自动休眠」的全部（2026-10-24 03:3x）
+
+用户要自动休眠。这块板子的背光在 **GPIO6**，走 LEDC（20 kHz，10 bit，`ledc_channel 0`），也就是说「休眠」在本项目里的物理含义只有一件事：**把 duty 写成 0**。
+
+| 事项 | 做法 / 事实 |
+|---|---|
+| 熄灭 | `pp_board_backlight(0)` → `ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0)` + `ledc_update_duty`。面板、RGB 时序、LVGL 全都不停，只是没有背光 |
+| 唤醒 | `pp_board_backlight(cfg->brightness)`，亮度 10..100 % 映射到 0..1023 |
+| 怎么判「没人操作」 | 用 LVGL 的 inactivity clock（`lv_display_get_inactive_time(NULL)`），GT911 触摸驱动每次 read 都会给它打戳——不需要在触摸中断里另外记时间 |
+| 怎么验「真的黑了」 | 读回寄存器而不是看状态变量：`ledc_get_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0)`，串口打印 `---TOURSLEEP asleep=1 duty=0---` / `---TOURWAKE asleep=0 duty=603---`（603 ≈ 59% × 1023） |
+| 硬件注意 | 背光**没有**接在 TCA9554 上，关背光不需要 I2C 往返；反过来 duty=0 时 GT911 仍能中断，触摸唤醒是可靠的 |
+| 没做的部分 | 没进 light sleep、没关 RGB 面板电源、没降频——那些会把 WiFi 和闹钟一起拖下水；代价是待机电流仍是几十 mA 量级 |
+
+> 结论：对这块板子来说「自动休眠」= 背光控制 + 一个空闲计时器，**不需要动电源管理**；真要省电再谈 light sleep。
+
+
 > 结论：**要横屏而没有整屏旋转能力时，label 级 transform 是够用的**——前提是页面元素少（十几个以内）、排版不用 flex。真要整页横屏（阅读、表格）还是得回到 §7.2 的整屏矩阵方案。
 

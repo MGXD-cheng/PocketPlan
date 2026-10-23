@@ -11,6 +11,8 @@ build/
 # ---- logs / captures ----
 *.log
 build*.txt
+boot*.txt
+_gh*.py
 
 # ---- local / personal scratch (this workspace holds earlier experiments) ----
 case/
