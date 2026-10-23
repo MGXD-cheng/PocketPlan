@@ -25,6 +25,7 @@
 #include "config.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
+#include "freertos/semphr.h"
 #include "focus.h"
 #include "lvgl.h"
 #include "pages.h"
@@ -86,49 +87,119 @@ static uint8_t *fold_rgb565(const uint8_t *src_data, uint32_t w, uint32_t h,
     return img;
 }
 
+/* ---- snapshot plumbing --------------------------------------------------
+ * lv_snapshot_take() renders the widget tree through LVGL's own draw pipeline,
+ * so it has to run on the LVGL task. The tour used to call it from its own
+ * task while holding the LVGL lock: that parked the LVGL task mid-flush and
+ * rendered through the display's draw buffers at the same time, which is how
+ * the settings screenshot ended up with two different x offsets in one image.
+ * The old code then fell back to the panel framebuffer, which the RGB panel
+ * double buffers, so the damage showed up as a "half old / half new" picture.
+ *
+ * Now the caller only posts a request. An lv_timer running inside the LVGL
+ * task renders into a draw buffer that is created once and reused, folds it to
+ * 1bpp and signals a semaphore. Nothing outside the LVGL task ever touches the
+ * display buffers, and no per-shot allocation can fail halfway. */
+#define SNAP_TIMEOUT_MS 8000
+#define SNAP_TICK_MS 20
+
+static lv_draw_buf_t *s_snap_buf;
+static lv_timer_t *s_snap_timer;
+static SemaphoreHandle_t s_snap_sem;
+static volatile int s_snap_state; /* 1 = requested, 2 = rendering */
+static uint8_t *s_snap_pbm;
+static size_t s_snap_len;
+static uint32_t s_snap_w, s_snap_h;
+static esp_err_t s_snap_err;
+
+static void snap_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    if (s_snap_state != 1) {
+        return;
+    }
+    s_snap_state = 2;
+
+    lv_display_t *disp = pp_board_display();
+    lv_obj_t *screen = lv_screen_active();
+    /* Finish whatever refresh is in flight so the capture is the frame the user
+     * is looking at, not a half applied scroll. */
+    lv_obj_invalidate(screen);
+    if (disp != NULL) {
+        lv_refr_now(disp);
+    }
+
+    if (s_snap_buf != NULL && lv_snapshot_reshape_draw_buf(screen, s_snap_buf) != LV_RESULT_OK) {
+        /* Screen geometry changed under us; the old buffer cannot be reused. */
+        lv_draw_buf_destroy(s_snap_buf);
+        s_snap_buf = NULL;
+    }
+    if (s_snap_buf == NULL) {
+        s_snap_buf = lv_snapshot_create_draw_buf(screen, LV_COLOR_FORMAT_RGB565);
+    }
+
+    s_snap_err = ESP_ERR_NO_MEM;
+    if (s_snap_buf != NULL &&
+        lv_snapshot_take_to_draw_buf(screen, LV_COLOR_FORMAT_RGB565, s_snap_buf) == LV_RESULT_OK) {
+        size_t len = 0;
+        uint8_t *img = fold_rgb565(s_snap_buf->data, s_snap_buf->header.w,
+                                   s_snap_buf->header.h, s_snap_buf->header.stride, &len);
+        if (img != NULL) {
+            free(s_snap_pbm);
+            s_snap_pbm = img;
+            s_snap_len = len;
+            s_snap_w = s_snap_buf->header.w;
+            s_snap_h = s_snap_buf->header.h;
+            s_snap_err = ESP_OK;
+        }
+    }
+    xSemaphoreGive(s_snap_sem);
+}
+
 esp_err_t pp_shot_pbm(uint8_t **out, size_t *out_len, uint32_t *out_w, uint32_t *out_h)
 {
-    lv_display_t *disp = pp_board_display();
-    if (disp == NULL) {
+    if (pp_board_display() == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (!lvgl_port_lock(10000)) {
+    if (s_snap_sem == NULL) {
+        s_snap_sem = xSemaphoreCreateBinary();
+        if (s_snap_sem == NULL) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+    if (s_snap_timer == NULL) {
+        if (!lvgl_port_lock(10000)) {
+            return ESP_ERR_TIMEOUT;
+        }
+        s_snap_timer = lv_timer_create(snap_timer_cb, SNAP_TICK_MS, NULL);
+        lvgl_port_unlock();
+        if (s_snap_timer == NULL) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+    if (s_snap_state != 0) {
+        return ESP_ERR_INVALID_STATE; /* one capture at a time */
+    }
+    /* Drop a completion left behind by an earlier timeout, then ask for one. */
+    while (xSemaphoreTake(s_snap_sem, 0) == pdTRUE) {
+    }
+    s_snap_err = ESP_ERR_TIMEOUT;
+    s_snap_state = 1;
+    if (xSemaphoreTake(s_snap_sem, pdMS_TO_TICKS(SNAP_TIMEOUT_MS)) != pdTRUE) {
+        s_snap_state = 0;
+        ESP_LOGW(TAG, "snapshot timed out");
         return ESP_ERR_TIMEOUT;
     }
-    /* Flush anything still pending so the tree we snapshot is the frame the
-     * user is looking at, not a half-applied scroll/refresh. */
-    lv_obj_invalidate(lv_screen_active());
-    lv_refr_now(disp);
-    /* Render the live widget tree into a scratch buffer instead of peeking at
-     * the panel framebuffer: the RGB panel double buffers, so right after a big
-     * redraw the "active" buffer can still hold the frame before last. */
-    uint32_t w = 0, h = 0;
-    uint8_t *img = NULL;
-    size_t size = 0;
-    for (int attempt = 0; attempt < 3 && img == NULL; attempt++) {
-        lv_draw_buf_t *snap = lv_snapshot_take(lv_screen_active(), LV_COLOR_FORMAT_RGB565);
-        if (snap == NULL) {
-            /* ~600 KB from PSRAM can fail transiently right after a redraw. */
-            ESP_LOGW(TAG, "snapshot attempt %d failed", attempt);
-            vTaskDelay(pdMS_TO_TICKS(60));
-            continue;
-        }
-        w = snap->header.w;
-        h = snap->header.h;
-        img = fold_rgb565(snap->data, w, h, snap->header.stride, &size);
-        lv_draw_buf_destroy(snap);
+    s_snap_state = 0;
+    if (s_snap_err != ESP_OK) {
+        ESP_LOGW(TAG, "snapshot failed: %s", esp_err_to_name(s_snap_err));
+        return s_snap_err;
     }
-    /* Never fall back to the panel framebuffer: with the RGB panel's double buffering it can
-     * be half old / half new, which is exactly how the torn settings screenshot
-     * happened (two different x offsets in one image). */
-    lvgl_port_unlock();
-    if (img == NULL) {
-        return ESP_ERR_NO_MEM;
-    }
-    *out = img;
-    *out_len = size;
-    *out_w = w;
-    *out_h = h;
+    *out = s_snap_pbm;
+    *out_len = s_snap_len;
+    *out_w = s_snap_w;
+    *out_h = s_snap_h;
+    s_snap_pbm = NULL;
     return ESP_OK;
 }
 
@@ -377,6 +448,10 @@ static void tour_task(void *arg)
 
     char book[400];
     if (first_book(book, sizeof(book))) {
+        /* Pin the reading size so the two captures really are 16 px then 20 px;
+         * whatever the last session left in config would otherwise decide. */
+        pp_config()->font_size = 16;
+        pp_config_save();
         pp_reader_ui_open(book);
         vTaskDelay(pdMS_TO_TICKS(3000));
         printf("---TOURREADER---\n");
@@ -405,6 +480,11 @@ static void tour_task(void *arg)
     lvgl_port_unlock();
     vTaskDelay(pdMS_TO_TICKS(1800));
     printf("---TOURSETSETTINGS---\n");
+    pp_shot_dump_serial();
+    /* Capture the same untouched screen a second time: the two images must be
+     * byte identical now that the snapshot runs on the LVGL task into a reused
+     * buffer. A torn read shows up as a diff here. */
+    printf("---TOURSETSETTINGS2---\n");
     pp_shot_dump_serial();
     /* Same screen scrolled to the network section: proves the WebDAV switch is
      * there and starts switched off. */

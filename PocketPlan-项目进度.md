@@ -1,6 +1,6 @@
 # PocketPlan 项目进度报告
 
-> 生成时间：2026-10-24 04:2x（本地，M14.3 滑块手柄与键盘轮廓 + M14.4 网页映射开关/网页设置页重试；此前 M14 自动休眠 + 开源发布，M13.1 把时钟模式改成横屏）
+> 生成时间：2026-10-24 04:2x（本地，M14.5 截图撕裂的根因修复：快照搬进 LVGL 任务 + 常驻缓冲；此前 M14.3 滑块手柄与键盘轮廓、M14.4 网页映射开关/网页设置页重试、M14 自动休眠 + 开源发布，M13.1 把时钟模式改成横屏）
 > 设备：Waveshare **ESP32-S3-Touch-LCD-2.8B**（2.8" 480×640 RGB 屏 + GT911 触摸 + 8MB PSRAM + 16MB Flash）
 > 代码位置：`D:\Users\PC\Desktop\esp32-mgxd\pocketplan\`
 > 设计文档：`D:\Users\PC\Desktop\esp32-mgxd\PLAN-BOARD-DESIGN.md`（v0.2）
@@ -92,6 +92,7 @@ BOOT 按键                GPIO0（长按可清除 WiFi 凭据）
 [x] M14.2 滑块纯黑（设备端显式样式 + 网页 `accent-color:#000`）与 README 图库补齐
 [x] M14.3 滑块手柄可见（白圆 + 黑环，原来黑钮融进黑轨道）+ AI 键盘按键描边与 20px 字号；网页滑块按要求恢复浏览器默认外观
 [x] M14.4 网页映射（WebDAV）设置开关，默认关；网页端设备重启后设置页自动重试，不再把「数据存 SD 卡」显示成默认的「设备内部存储」
+[x] M14.5 截图撕裂根因修复：快照改在 LVGL 任务里做（`lv_timer` 请求/应答）+ 480×640 缓冲只建一次复用，彻底不再读面板帧缓冲；连拍两张 sha256 相同
 ```
 
 ### 3.1 已实测通过的清单（M1 + M3–M9，2026-10-23 22:1x）
@@ -349,7 +350,36 @@ boot2: ---TOURCFG loaded=1 data_on_sd=1 sd_file=1 lfs_file=0 plans=3---
 - `loadConfig(tries)` 失败自动重试 4 次（每次 1500 ms），仍失败才提示「读取设置失败，设备可能正在重启」；
 - 新增 `waitBack(tries)`：保存「数据存 SD 卡」成功后每 2 秒轮询 `/api/status`，设备回来后自动 `loadConfig()` + `loadStatus()`（最多 15 次）。
 
+### 3.12 M14.5 截图撕裂的根因修复（2026-10-24 04:5x，本轮新增）
+
+起因是设置页那张截图左右两半错位、同一行控件出现两次。上一版只是"重试 + 失败就报错"，属于把症状压住；这一版把产生撕裂的三条路径都堵死了。
+
+**为什么原来会撕裂（三层叠加）**：
+
+1. `pp_shot_pbm()` 原本在 tour / console **任务里**直接调 `lv_snapshot_take()`，只靠 `lvgl_port_lock` 互斥。LVGL 9 的 snapshot 走的是渲染管线，要求在同一次 LVGL 任务上下文里；从别的任务挤进去时，LVGL 任务可能正停在一帧 flush 中间，display 的 draw buffer 正被改写。
+2. 旧的兜底是：快照失败就 `lv_display_get_buf_active()` **读面板帧缓冲**。RGB 面板是双缓冲 + 直接模式，那块缓冲正在被扫描输出，天然可能半新半旧——两张不同 x 偏移的图叠在一张里就是这么来的。
+3. 每次快照都现场 malloc ~600KB（480×640×2），PSRAM 碎片化时成功率不稳定，失败就越容易走到第 2 条。
+
+**现在的实现**（全部在 `pocketplan/main/shot.c`）：
+
+| 点 | 做法 |
+|---|---|
+| 请求 / 应答 | `pp_shot_pbm()` 只置 `s_snap_state = 1` 然后 `xSemaphoreTake()` 等结果；真正的渲染交给跑在 LVGL 任务里的 `lv_timer`（20ms 周期，`snap_timer_cb`）。抓图期间**不再持有 `lvgl_port_lock`** |
+| 常驻缓冲 | 第一次 `lv_snapshot_create_draw_buf()` 建 480×640 RGB565（约 600KB PSRAM），之后每次 `lv_snapshot_reshape_draw_buf()` 复用同一个 + `lv_snapshot_take_to_draw_buf()` 渲染，**不再逐次 malloc** |
+| 帧完整性 | timer 回调里先 `lv_obj_invalidate(lv_screen_active())` + `lv_refr_now(disp)` 把待刷新的内容推完，再快照；**完全不碰面板缓冲** |
+| 失败可见 | 渲染或折叠失败把 `s_snap_err` 带回调用方，`pp_shot_dump_serial()` 打 `---PBMFAIL ESP_ERR_NO_MEM---`，不会再产出一张"看起来正常"的坏图 |
+| 串行化 | `s_snap_state != 0` 时拒绝新请求；等待上限 8 秒；超时后排空信号量，避免下一次请求吃到上一次的完成 |
+
+**验证**（tour56，`PP_SCREEN_TOUR=1`，新增 `---TOURSETSETTINGS2---`：同一静止页面连拍两张）：
+
+- `-Seconds 215` 抓到 1,013,545 字节、**19 块**截图全部解出，`snapshot failed` / `PBMFAIL` 计数 **0**；
+- 两张连拍 PNG（`n56_16` / `n56_17`，各 6,368 字节）**sha256 完全相同**——同一帧可以重复取到，不再是"半新半旧"；
+- 恢复 `PP_SCREEN_TOUR=0` 重编：正式版 **`0x37a050` = 3,645,520 字节**，剩 `0x75fb0` = 482,352 字节（12%），已烧录 `Hash of data verified.`；`boot24.txt` 里 `E (` 计数 0，`station got ip 192.168.0.106`。
+
+**顺手补的一个 tour 漏洞**：阅读器 16px / 20px 两张曾经一模一样——不是阅读器坏了，是开机 config 里 `font_size` 本来就是 20（设备上手动点过 20 档），第一次 open 就已经是 20px。现在 tour 在第一次 `pp_reader_ui_open()` 之前显式 `pp_config()->font_size = 16; pp_config_save();`，两张才是真的 16 和 20（这处只动了 tour 代码，未再单独跑一遍验证）。
+
 ---
+
 ## 四、代码结构
 
 ```
@@ -436,7 +466,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 脚本内部做的事（缺一步就编译失败）：`$env:MSYSTEM=$null` → 设 `IDF_PATH` / `IDF_TOOLS_PATH` / `PYTHONUTF8=1` → `. activate.py --export` → 执行传入的 `-Command`。
 
 - 纯增量 **40–90 秒**；改了 `sdkconfig` 会触发全量重编，**约 15 分钟**
-- 成功标志：`Project build complete.` + `pocketplan.bin binary size 0x379ed0 bytes. 0x76130 bytes (12%) free.`（3,645,136 字节，app 分区 0x3f0000 = 4,128,768 字节，剩 483,632 字节）
+- 成功标志：`Project build complete.` + `pocketplan.bin binary size 0x37a050 bytes. 0x75fb0 bytes (12%) free.`（3,645,520 字节，app 分区 0x3f0000 = 4,128,768 字节，剩 482,352 字节）
 - 编译**必须后台跑并轮询日志**（前台会超时）；日志是 UTF-16，用 `Select-String` 读，别用 `cat`
 
 ### 5.3 烧录
@@ -480,7 +510,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 
 - **HTTP 方式**：`curl -s -m 45 -o shot.pbm http://192.168.0.106/api/screenshot` → 480x640 1bpp PBM（38,411 字节）。PC 端 `python` + Pillow 读 PBM 即可转 PNG。
   - 注意 `CONFIG_LWIP_TCP_SND_BUF_DEFAULT/TCP_WND_DEFAULT = 5760`，往返 200ms 时吞吐只有 ~28KB/s；几百 KB 的大图会 `httpd_sock_err: error in send: 104`，所以截图刻意做成 1bpp。
-- **串口方式（更稳）**：把 `pocketplan/main/shot.c` 里的 `#define PP_SCREEN_TOUR` 改回 `1` 重新编译烧录，开机 9 秒后自动逐页 tour，**共 16 段 dump**（6 个 tab + 音乐读取中 + 音乐完成 + 打卡完成态 + 键盘 + 闹钟响铃 + SD 缓存自检 + 专注 + 时钟模式暗/亮 + 阅读器 16px + 阅读器 20px），每页一个 PBM，**每个约 7 秒**（38KB → 51KB base64 @115200），**要 `-Seconds 165` 才走完全程**，每页把 PBM 以 base64 打到串口（分隔标记 `---TOURTAB n---` / `---TOURMUSICLOAD---` / `---TOURCLOCK---` / `---TOURCLOCKLIGHT---` / `---TOURREADER---` / `---TOURREADER20---` / `---TOUREND---`；旁证打印 `---TOURTAPEXIT active=0---`、`---TOURCACHE …---`、`---TOURALARM---`）。抓取与解码：
+- **串口方式（更稳）**：把 `pocketplan/main/shot.c` 里的 `#define PP_SCREEN_TOUR` 改回 `1` 重新编译烧录，开机 9 秒后自动逐页 tour，**共 19 段 dump**（6 个 tab + 音乐读取中 + 音乐完成 + 打卡完成态 + 键盘 + 闹钟响铃 + 专注 + 时钟模式暗/亮 + 阅读器 16px + 阅读器 20px + 设置页 + **设置页连拍第二张** + 网页映射那一屏），每页一个 PBM，**每个约 7 秒**（38KB → 51KB base64 @115200），**要 `-Seconds 215` 才走完全程**，每页把 PBM 以 base64 打到串口（分隔标记 `---TOURTAB n---` / `---TOURMUSICLOAD---` / `---TOURCLOCK---` / `---TOURCLOCKLIGHT---` / `---TOURREADER---` / `---TOURREADER20---` / `---TOUREND---`；旁证打印 `---TOURTAPEXIT active=0---`、`---TOURCACHE …---`、`---TOURALARM---`）。抓取与解码：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'tools/pp_serial.ps1' -Port COM5 -Seconds 100 > tour.log 2>&1
@@ -492,7 +522,7 @@ cd pocketplan && python decodetour.py ../tour32.log ../n32_   # 生成 ../n32_0.
 
 - `decodetour.py` 现在对丢字符的坏块是容错的：base64 自动补 `=` 到 4 的倍数、`ImageFile.LOAD_TRUNCATED_IMAGES = True`、逐块 try/except。串口 115200 下偶尔会截断一块（见 §七 第 42 条），跳过即可，不影响其余块。
 - 抓完图记得把 `PP_SCREEN_TOUR` 改回 0 再编一次——**交付版必须是 `PP_SCREEN_TOUR 0`**（当前已是 0），否则每次开机都被自检占用几十秒屏幕。
-- **截图可能是「撕裂」的**：`pp_shot_pbm()` 现在先 `lv_obj_invalidate()` + `lv_refr_now()`，再 `lv_snapshot_take()` 重试 3 次；**不再回退读面板帧缓冲**（双缓冲 + 直接模式下会拿到半新半旧的帧，产出左右两半错位的图）。拿到这种图不要怀疑 UI，重新抓一张即可（§七 第 54 条）。
+- **撕裂已经不会再出现**（M14.5 根因修复，见 §3.12 与 §七 第 54 条）：快照现在跑在 LVGL 自己的任务里（`lv_timer` 请求/应答），用一块 `lv_snapshot_create_draw_buf()` 建一次、之后 `lv_snapshot_reshape_draw_buf()` 复用的 480×640 缓冲渲染，**绝不读面板帧缓冲**，也不逐次 malloc。真失败时串口会打 `---PBMFAIL …---`，重抓即可；同一屏连拍两张应当逐字节相同，这本身就是一条自检。
 
 ---
 
@@ -682,7 +712,21 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 | 正式版启动 | `boot21.txt`：`config: loaded config (… cache_sd 0, webdav 0)`@2.60s、`plans: loaded 3 plans, today 2026-10-24`@2.76s、`alarms: loaded 1 alarms`@2.92s、`webdav: … (disabled)` + `ready`@4.08s、`station got ip 192.168.10.104`@4.62s、`clock: RTC updated from SNTP`@7.31s；`E (` 计数 **0** |
 | 网页端 | `index.html` 的 19,864 字节 JS 过了 `node --check`；`grep accent-color` = 0（滑块已复原）；`waitBack` 出现 3 次；`#webdav` 的读取/保存/回填三处齐全。**HTTP 端到端这轮仍没做**：设备又落到 mesh 的 `192.168.10.104`，PC `192.168.0.105` 不在同一段，`curl` 两个地址都空响应 |
 
+### 6.13 M14.5 截图根因修复复测（2026-10-24 04:5x，串口 tour 固件）
+
+`PP_SCREEN_TOUR=1`（`PP_TOUR_CFG` 仍为 0），`pp_serial.ps1 -Port COM5 -Seconds 215` 抓到 1,013,545 字节、**19 块**截图、24 个 marker，`E (` 计数 0：
+
+| 项 | 结果 |
+|---|---|
+| 抓图链路 | 19 块全部解出（480×640，每块 38,411 字节 PBM）；`snapshot failed` 与 `PBMFAIL` 计数均为 **0** → 常驻缓冲 + LVGL 任务内渲染这条路一次都没掉链子 |
+| 连拍一致性 | `---TOURSETSETTINGS---` 与 `---TOURSETSETTINGS2---` 两张（各 6,368 字节）**sha256 完全相同**（`dfdbb3b608fc67d4…`）：同一静止画面重复取到的就是同一帧，这就是"不再撕裂"的判据 |
+| 截图本身 | 设置页：字号 16/20、两条滑块白钮黑环、自动休眠"开 / 每 5 分"、专注两个 chip 齐全，无重复、无错位 |
+| 回归 | 19 个 TOUR marker 与前一版一致（TOURTAB 0..5、TOURMUSICLOAD、TOURMUSIC、TOURDONE、TOURKEYBOARD、TOURALARM、TOURFOCUS、TOURCLOCK、TOURCLOCKLIGHT、TOURTAPEXIT `active=0`、TOURREADER、TOURREADER20、TOURSETSETTINGS、**TOURSETSETTINGS2**、TOURWEBDABUI、TOURSLEEP `asleep=1 duty=0`、TOURWAKE `asleep=0 duty=562`、TOURWEBDAB `default=0 port80=1`、TOUREND） |
+| 二进制 | tour 版 `0x37a7f0`；恢复 `PP_SCREEN_TOUR=0` 后正式版 **`0x37a050`（3,645,520 字节，剩 `0x75fb0` = 482,352 字节，12%）**，烧录 `Hash of data verified.` |
+| 正式版启动 | `boot24.txt`：`config: loaded config (… cache_sd 0, webdav 0)`@2.60s、`store: mounted at /lfs`、`plans: loaded 3 plans`、`alarms: loaded 1 alarms`、`webdav: … (disabled)` + `ready`@4.07s、`station got ip 192.168.0.106`@4.98s、`clock: RTC updated from SNTP`@5.91s；`E (` 计数 **0** |
+
 ---
+
 ## 七、踩过的坑与修法（都已在代码里修好，留作备忘）
 
 | # | 现象 | 根因 | 修法 |
@@ -740,7 +784,7 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 | 51 | tour 里 `lv_obj_scroll_to_view(s_webdav_row, LV_ANIM_OFF)` 截图没滚动 | 设置页比一屏高，但 tab 容器在无触摸的 tour 里不滚；`scroll_to_view` 依赖滚动祖先，实测无效且不报错 | 截图专用：把「网络」卡片之上的卡片全部 `LV_OBJ_FLAG_HIDDEN`，再 `lv_obj_update_layout()` + `scroll_to_y(0)`，网络区块自然顶到上方（函数 `pp_settings_demo_webdav()`，只被 tour 调用） |
 | 52 | 用户反馈「每次重启，数据存储位置都变回设备内部存储」 | 设备端其实没回退：探针证明 `cache_sd` 跨重启是 1（`TOURCFG loaded=1 data_on_sd=1`）。是**网页端**在设备重启窗口里 `/api/config` 失败，`<select>` 停在 HTML 默认第一项 | `loadConfig()` 自动重试 4×1.5s；`saveStorage()` 成功后 `waitBack()` 每 2s 轮询 `/api/status`，设备回来再拉配置，不再显示成「设备内部存储」 |
 | 53 | WebDAV 想「关了就不能用」，但 handler 只能在 `httpd_start()` 前注册 | 靠注销/重注册实现开关要重启 httpd（连同 Web 页面一起断），切换要等重启 | 保持注册、请求时判定：十个 handler 首行 `if (!dav_enabled()) return dav_deny(req);`（404 + 「WebDAV is disabled」），开关即时生效、零重启 |
-| 54 | 设置页那张截图左右两半错位，同一行控件出现两次（用户一眼看出「截图是坏的」） | `pp_shot_pbm()` 里 `lv_snapshot_take()` 失败（480×640 RGB565 抓图要 ~600KB PSRAM，大重绘后可能瞬时不足）会**回退去读面板帧缓冲**，而 RGB 面板是双缓冲 + 直接模式，此刻很可能半帧新半帧旧 | 快照改成**重试 3 次**（每次间隔 60ms），抓图前先 `lv_obj_invalidate()` + `lv_refr_now()`；**彻底删掉回退面板缓冲那条路**——宁可返回 `ESP_ERR_NO_MEM` 也不产出撕裂图 |
+| 54 | 设置页那张截图左右两半错位，同一行控件出现两次（用户一眼看出「截图是坏的」） | 三条叠加：① `pp_shot_pbm()` 在 tour 任务里直接 `lv_snapshot_take()`，只靠 `lvgl_port_lock` 互斥，而 LVGL 9 的 snapshot 要求在同一 LVGL 任务上下文里，从别的任务挤进去时 LVGL 任务可能正停在半帧 flush 上；② 快照失败会**回退读面板帧缓冲**，RGB 面板双缓冲 + 直接模式下那块缓冲正在被扫描输出；③ 每次快照现场 malloc ~600KB，PSRAM 碎片化时容易失败 → 经常走到 ② | M14.5 根因修法：快照交给 LVGL 任务里的 `lv_timer`（请求 / 信号量应答，抓图期间不持 `lvgl_port_lock`）；用 `lv_snapshot_create_draw_buf()` 建一次 480×640 缓冲、之后 `lv_snapshot_reshape_draw_buf()` + `lv_snapshot_take_to_draw_buf()` 复用；`lv_obj_invalidate()` + `lv_refr_now()` 后渲染，**绝不读面板缓冲**；失败明确打 `---PBMFAIL …---`。同一个静止页连拍两张 sha256 相同 |
 
 ---
 
@@ -754,7 +798,7 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 - `W (2048) gpio: conflict found for GPIO[16]` —— TP_INT 被复位代码与触摸驱动各配置一次，无害，待清理
 - **字体只有 16px / 20px 两档点阵**，没有中间字号：15px、18px 这类需求要么放大要么缩小；1bpp 也没有反锯齿，斜笔画在极小字号下会比矢量字体硬
 - 字体源文件 `.c` 合计 ~14.7MB，全量重编时编译器要多花几十秒；增量构建不受影响
-- 固件已到 **3.65MB / app 分区 3.94MB（0x379ed0 = 3,645,136 字节，剩 12%，0x76130 = 483,632 字节）**，再加功能（OTA、更多字体档位、MP3 解码）前必须先瘦身（例如裁掉 0x4E00-0x9FA5 里用不到的字，或把 20px 改成按需生成）
+- 固件已到 **3.65MB / app 分区 3.94MB（0x37a050 = 3,645,520 字节，剩 12%，0x75fb0 = 482,352 字节）**，再加功能（OTA、更多字体档位、MP3 解码）前必须先瘦身（例如裁掉 0x4E00-0x9FA5 里用不到的字，或把 20px 改成按需生成）
 - Windows 映射网络驱动器连 HTTP WebDAV 需要开 WebClient 服务；**尚未在真资源管理器里实测**（curl 层面全通）
 - 倒数日在**设备端只读**：屏幕没有中文输入法，增删改只能在网页端做（这是故意的取舍，不是没做完）
 - 专注模式目前只是「横屏时钟 + 已专注计时」：没有番茄钟倒计时/提醒、没有白噪音、不统计历史专注时长，退出即清零
@@ -775,6 +819,7 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 - **响铃与时钟模式不熄屏**是有意的例外：闹钟响时必须看得见，时钟模式本来就是当台钟用；代价是响铃 60 秒内屏幕一直亮着
 - 休眠时长只有 1/3/5/10/30 五档（屏幕 chip 循环切换，网页是下拉），没有「不熄屏」以外的自定义值；30 分钟以上只能再进网页设置（上限 60）
 - **网页映射（WebDAV）默认是关的**：没有认证、没有只读模式，开了就等于同网段谁都能读写 TF 卡；开关在设备设置页「网络」区块和网页「设置 → 网页映射」两处，关掉后 WebDAV 的十个方法统一返回 404「WebDAV is disabled」（端口仍在监听，HTTP Web 页面不受影响）
+- **抓屏取证仍要烧 tour 固件**：`/api/screenshot` 只给 1bpp 且受 5.7KB TCP 窗口限制，一次一张还行，批量抓全流程仍靠 `PP_SCREEN_TOUR=1` + 串口；交付固件里它必须是 0
 - **网页端的滑块回到了浏览器默认外观**（用户要求「改回原样」）：设备端是纯黑+白钮黑环，网页端在 Chrome/Android 上又会是那条靛紫；两边观感不一致是刻意的取舍
 - **设备重启后的 5–10 秒内网页读不到设置**：`loadConfig()` 重试 4×1.5s、`waitBack()` 轮询 15×2s 覆盖了这次重启窗口，但超过 30 秒还没起来（比如卡格式化）仍会显示「读取设置失败」
 - **GitHub 仓库的首个 commit 是走 API 建的**（见 §3.8）：本地 `git` 的 commit sha 与远端不同，在这台机器上 `git push` 也不通（`github.com:443` 被丢包），要同步得先换网络或继续用 API
@@ -785,6 +830,7 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 
 1. **网页端人工验收**（最优先，属上一轮的未闭环）：手机或电脑打开 `http://192.168.0.106/` → 打卡看是否即时反色、「倒数」tab 的闹钟编辑器能增删改、「设置」→「专注」能选倒数日与暗色、「设置」→「数据存储」能切 SD 卡并在状态里看到 `data_on_sd:true`（REST 层已全通，缺的只是 UI 手感）
    - **设备端手感验收**：点打卡圈（黑圆/空心圈切换）、设置里两个 chip 进出「专注/时钟模式」、音乐 tab 进入时是否先看到「读取中 N/115」
+   - **截图自检**（M14.5）：以后改 UI 再抓图，同一屏连拍两张应当逐字节相同（§6.13）；不同就说明又出现了「读到半帧」的问题
    - **滑块颜色确认**（M14.2）：先在**手机网页**上确认「设置」里的亮度/行距滑块不再是紫色（`accent-color:#000` 是纯 CSS，没做过浏览器实测）；再在**设备屏**上看一眼两条滑块——设备端日志已证明是纯黑（`ind=#ff000000 knob=#ff000000`），显式样式只是保险
 2. **焊 PCM5102A**（GPIO43 BCLK / GPIO44 LRCK / GPIO4 DIN，3.3V + GND）→ M4 接 `esp_audio_codec` 解 MP3 → I2S 出声
 3. **触摸交互实测**：打卡按钮、阅读器翻页、设置滑块、AI 键盘（AI 要先在网页端填 DeepSeek Key）、闹钟「开/关」chip
