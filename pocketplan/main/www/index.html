@@ -34,6 +34,10 @@ button.ghost{background:#e8f0fe;color:var(--blue);border:0;border-radius:10px;pa
 button.danger{background:#fce8e6;color:#c5221f;border:0;border-radius:10px;padding:11px 16px;font-size:14px}
 input,select,textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:15px;background:#fff;font-family:inherit}
 label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+/* The browser's default range accent is Material indigo (reads as purple on
+ * Android Chrome); pin it to black so the sliders match the monochrome device
+ * UI instead of looking like a leftover default. */
+input[type=range]{padding:0;border:0;background:transparent;accent-color:#000;height:32px}
 .row2{display:flex;gap:10px}.row2>*{flex:1}
 .days{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .days label{display:flex;align-items:center;gap:4px;font-size:13px;color:var(--text);margin:0;border:1px solid var(--line);padding:6px 9px;border-radius:8px}

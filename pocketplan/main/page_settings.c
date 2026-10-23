@@ -30,6 +30,8 @@
 #define C_CHIP 0x000000
 #define C_EDGE 0x000000
 
+static const char *TAG = "settings";
+
 static lv_obj_t *s_root;
 static lv_obj_t *s_font_large;
 static lv_obj_t *s_font_small;
@@ -46,6 +48,34 @@ static lv_obj_t *s_dark_chip;
 static lv_obj_t *s_cache_chip;
 static lv_obj_t *s_sleep_chip;
 static lv_obj_t *s_sleep_min_chip;
+
+/* The theme hands the slider its primary colour, which arrives on this RGB565
+ * panel as a saturated purple instead of the black/white palette the rest of
+ * the UI uses. Rather than trusting the theme, pin every slider part: white
+ * track with a black outline, solid black filled part, solid black knob.
+ * A faded grey track is useless here - grey simply disappears on this panel. */
+static void style_slider(lv_obj_t *s)
+{
+    ESP_LOGI(TAG, "slider theme colour before override: ind=#%06lx knob=#%06lx",
+             (unsigned long)lv_color_to_u32(lv_obj_get_style_bg_color(s, LV_PART_INDICATOR)),
+             (unsigned long)lv_color_to_u32(lv_obj_get_style_bg_color(s, LV_PART_KNOB)));
+
+    lv_obj_set_style_bg_color(s, lv_color_hex(C_CHIP), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(s, lv_color_hex(C_EDGE), LV_PART_MAIN);
+    lv_obj_set_style_border_width(s, 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(s, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+
+    lv_obj_set_style_bg_color(s, lv_color_hex(C_CHIP), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(s, LV_OPA_COVER, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(s, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+
+    lv_obj_set_style_bg_color(s, lv_color_hex(C_CHIP), LV_PART_KNOB);
+    lv_obj_set_style_bg_opa(s, LV_OPA_COVER, LV_PART_KNOB);
+    lv_obj_set_style_border_width(s, 0, LV_PART_KNOB);
+    lv_obj_set_style_shadow_width(s, 0, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(s, 9, LV_PART_KNOB);
+}
 
 static lv_obj_t *add_section(const char *title)
 {
@@ -390,6 +420,7 @@ void pp_settings_create(lv_obj_t *parent)
     lv_obj_set_width(ll, 60);
     s_line_space = lv_slider_create(row);
     lv_obj_set_flex_grow(s_line_space, 1);
+    style_slider(s_line_space);
     lv_slider_set_range(s_line_space, 0, 16);
     lv_slider_set_value(s_line_space, pp_config()->line_space, LV_ANIM_OFF);
     lv_obj_add_event_cb(s_line_space, line_space_changed, LV_EVENT_ALL, NULL);
@@ -413,6 +444,7 @@ void pp_settings_create(lv_obj_t *parent)
     lv_obj_set_width(bl, 60);
     s_brightness = lv_slider_create(row);
     lv_obj_set_flex_grow(s_brightness, 1);
+    style_slider(s_brightness);
     lv_slider_set_range(s_brightness, 10, 100);
     lv_slider_set_value(s_brightness, pp_config()->brightness, LV_ANIM_OFF);
     lv_obj_add_event_cb(s_brightness, brightness_changed, LV_EVENT_ALL, NULL);

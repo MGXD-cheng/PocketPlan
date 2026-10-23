@@ -27,7 +27,15 @@
 | WebDAV | 同一个 80 端口上提供 WebDAV，Windows 资源管理器 / macOS Finder 可以直接挂载读写 TF 卡 |
 | 配网 | 首次开机是热点 `PocketPlan-XXXX`（密码 `pocketplan`），网页里填 SSID/密码即可连家里的网；长按 BOOT 3 秒清除凭据 |
 
-界面截图都在 [`pocketplan/docs/screenshots`](pocketplan/docs/screenshots)（01–19）。
+界面截图都在 [`pocketplan/docs/screenshots`](pocketplan/docs/screenshots)（01–19），下面是其中 9 张真机照片：
+
+| 计划打卡 | 阅读器 | 倒数日 + 闹钟 |
+|---|---|---|
+| ![计划打卡](pocketplan/docs/screenshots/15-plans-checked-circle.png) | ![阅读器](pocketplan/docs/screenshots/06-reader-16.png) | ![倒数日](pocketplan/docs/screenshots/11-countdown-alarms.png) |
+| **音乐列表** | **AI + 键盘** | **设置** |
+| ![音乐](pocketplan/docs/screenshots/16-music-library.png) | ![AI](pocketplan/docs/screenshots/12-ai-keyboard.png) | ![设置](pocketplan/docs/screenshots/17-settings-modes.png) |
+| **时钟模式（暗）** | **闹钟响铃** | **专注模式** |
+| ![时钟模式](pocketplan/docs/screenshots/18-clock-mode-landscape-dark.png) | ![闹钟](pocketplan/docs/screenshots/13-alarm-ring.png) | ![专注](pocketplan/docs/screenshots/09-focus-landscape.png) |
 
 ## 硬件
 

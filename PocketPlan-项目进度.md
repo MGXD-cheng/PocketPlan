@@ -1,6 +1,6 @@
 # PocketPlan 项目进度报告
 
-> 生成时间：2026-10-24 03:3x（本地，M14 自动休眠 + 开源发布到 GitHub；此前 M13.1 把时钟模式改成横屏）
+> 生成时间：2026-10-24 03:4x（本地，M14.2 滑块纯黑 + README 图库；此前 M14 自动休眠 + 开源发布，M13.1 把时钟模式改成横屏）
 > 设备：Waveshare **ESP32-S3-Touch-LCD-2.8B**（2.8" 480×640 RGB 屏 + GT911 触摸 + 8MB PSRAM + 16MB Flash）
 > 代码位置：`D:\Users\PC\Desktop\esp32-mgxd\pocketplan\`
 > 设计文档：`D:\Users\PC\Desktop\esp32-mgxd\PLAN-BOARD-DESIGN.md`（v0.2）
@@ -89,6 +89,7 @@ BOOT 按键                GPIO0（长按可清除 WiFi 凭据）
 [x] M13.1 时钟模式改横屏（640×480）+ 显示下一个闹钟 + 去掉退出提示改为轻触 3 下退出；WiFi 凭据竞争修复（不再出现 sta is connecting / cannot set config）
 [x] M14 自动休眠（无操作 N 分钟关背光，轻触唤醒；闹钟响铃与时钟模式期间不熄屏；设置页 chip + 网页下拉）
 [x] M14.1 开源发布（README / MIT LICENSE / .gitignore；github.com/MGXD-cheng/PocketPlan）
+[x] M14.2 滑块纯黑（设备端显式样式 + 网页 `accent-color:#000`）与 README 图库补齐
 ```
 
 ### 3.1 已实测通过的清单（M1 + M3–M9，2026-10-23 22:1x）
@@ -278,11 +279,24 @@ BOOT 按键                GPIO0（长按可清除 WiFi 凭据）
 | 仓库 | <https://github.com/MGXD-cheng/PocketPlan>（public，MIT） |
 | 入库内容 | 102 个文件：`pocketplan/` 全部源码 + 4 个字体 `.c` + `sdkconfig`/`sdkconfig.defaults`/`partitions.csv`/`dependencies.lock`、19 张真机截图、`tools/` 里的构建/烧录/串口脚本、`.fontgen/` 字体生成脚本、三份报告 + 设计文档、README 与 LICENSE |
 | 刻意不入库 | `pocketplan/build`（约 234MB）、`pocketplan/managed_components`（184MB）、`*.bin/*.elf/*.map`、所有串口日志与临时截图、早期实验目录（`case/ demo/ idf/ i2cscan/ ref/ ref2/ sdtest/ xz/`）、早期下载的 `tools/arduino-cli.exe`/`.zip`（55MB，与本项目无关） |
-| README | 中文：一句话简介 + 3 张截图 + 功能表 12 行 + 硬件表（含引脚归属）+ 编译/烧录/首次使用 + 目录结构 + REST API 表 + 已知限制 + 许可与致谢 |
+| README | 中文：一句话简介 + 4 张主图 + 9 张图库表 + 功能表 12 行 + 硬件表（含引脚归属）+ 编译/烧录/首次使用 + 目录结构 + REST API 表 + 已知限制 + 许可与致谢 |
 | 许可证 | MIT（`Copyright (c) 2026 PocketPlan contributors`），第三方组件（ESP-IDF / LVGL / esp_lvgl_port / cJSON / esp_lcd 驱动）各自遵循原许可 |
 
 **一个环境事实（写下来免得下次再查）**：这台机器所在网络 **`git push` 到 `github.com:443` 直接连不上**（`github.com` 被 DNS 解析到 `20.205.243.166`，该 IP 无响应；而 `api.github.com`、`codeload.github.com` 以及 `github.com` 的 `140.82.112.3` 等 IP 都是通的）。所以首次发布是**走 GitHub REST 的 Git Data API** 完成的：`POST /git/blobs`（102 个，base64）→ `POST /git/trees` → `POST /git/commits` → `PATCH /git/refs/heads/main`（force）。本地 `git` 仓库与远端是同一份内容，但 commit sha 不同（作者时间戳不同）；下次有网时 `git push -f origin main` 或直接重新 clone 覆盖即可对齐。
 
+
+### 3.9 M14.2 滑块纯黑 + README 图库（2026-10-24 03:4x，本轮新增）
+
+用户这一轮的原话是「设置页主题色要与前几页一致，github开源记得放图片」，追问后确认要改的是**滑块**：「设置页的滑块条是紫色的，改为黑色的」。
+
+| 位置 | 改动 |
+|---|---|
+| 设备端 | `pocketplan/main/page_settings.c` 新增 `style_slider()`：行距、亮度两个 `lv_slider` 的 MAIN / INDICATOR / KNOB 三部分全部显式钉成纯黑（白底 + 2px 黑描边轨道、黑色填充、黑色圆钮），不再依赖主题 |
+| 设备端取证 | `style_slider()` 覆盖前先打印主题给的颜色：`settings: slider theme colour before override: ind=#ff000000 knob=#ff000000`（两次，两个滑块）。**说明设备端本来就是黑的**，紫色的来源不在这块屏上 |
+| 网页端 | `pocketplan/main/www/index.html` 给 `input[type=range]` 加 `accent-color:#000`。浏览器（Chrome/Android/Material）对未指定 accent 的 range 用的就是默认靛紫，这才是「紫色滑块条」的真正出处 |
+| README | 顶部 4 张主图之外新增 9 张一组的图库表（计划打卡 / 阅读器 / 倒数日+闹钟 / 音乐列表 / AI+键盘 / 设置 / 时钟模式 / 闹钟响铃 / 专注模式），指向 `pocketplan/docs/screenshots` |
+
+**为什么先怀疑错对象**：设备截图是 `shot.c` 的 1bpp PBM（按中灰阈值判墨），**任何颜色在截图上都会变成黑或白**，所以「截图里滑块是黑的」证明不了屏上是黑的；反过来也证明不了是紫的。真正把这件事定死的是上面那行日志——它读的是 LVGL 解析后的样式值。
 
 ---
 
@@ -372,7 +386,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 脚本内部做的事（缺一步就编译失败）：`$env:MSYSTEM=$null` → 设 `IDF_PATH` / `IDF_TOOLS_PATH` / `PYTHONUTF8=1` → `. activate.py --export` → 执行传入的 `-Command`。
 
 - 纯增量 **40–90 秒**；改了 `sdkconfig` 会触发全量重编，**约 15 分钟**
-- 成功标志：`Project build complete.` + `pocketplan.bin binary size 0x378f10 bytes. 0x770f0 bytes (12%) free.`（3,641,104 字节，app 分区 0x3f0000 = 4,128,768 字节）
+- 成功标志：`Project build complete.` + `pocketplan.bin binary size 0x379220 bytes. 0x76de0 bytes (12%) free.`（3,641,888 字节，app 分区 0x3f0000 = 4,128,768 字节，剩 486,880 字节）
 - 编译**必须后台跑并轮询日志**（前台会超时）；日志是 UTF-16，用 `Select-String` 读，别用 `cat`
 
 ### 5.3 烧录
@@ -582,9 +596,22 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 | 字号 chip 反白 | 同一张截图顺带确认了 M13 那个没抓到的修复：选中「16」是**黑底白字**，未选中「20」是白底黑框 |
 | 其余 16 块 | 计划/倒数+闹钟/文件/音乐/AI/键盘/响铃浮层/专注/时钟暗/时钟亮/三击退出/阅读器 16/阅读器 20 全部与 M13.1 一致（这次没动它们，属于回归） |
 | 最终固件启动 | `boot18.txt`：`display ready`@2.09s、`plans: loaded 3 plans, today 2026-10-24`、`alarms: loaded 1 alarms`、`ready`@4.11s、`station got ip 192.168.10.104`@4.55s、`clock: RTC updated from SNTP`@5.98s；`E (` 计数 **0**，只有三条无害 `W`（3wire_spi 删 CS、GPIO16 冲突、SD 输入延迟） |
-| 二进制 | `0x378f10`（3,641,104 字节），app 分区剩 `0x770f0`（487,664 字节，12%） |
+| 二进制 | `0x378f10`（3,641,104 字节），app 分区剩 `0x770f0`（487,664 字节，12%）；M14.2 终版 `0x379220`（3,641,888 字节，剩 `0x76de0` = 486,880 字节），见 §6.11 |
 | 未做到 | 设备这次落在 mesh 的另一个节点上（`192.168.10.104`），PC 在 `192.168.0.x` 不路由，**`/api/config` 里 `auto_sleep`/`sleep_min` 两个字段没能从 PC 用 curl 验证**；字段收发是照着既有 `focus_dark`/`cache_sd` 的同一套代码写的，属于代码级确认，未做端到端 |
 
+
+### 6.11 M14.2 滑块纯黑真机复测（2026-10-24 03:41，串口 tour 固件）
+
+`shot.c` 临时 `PP_SCREEN_TOUR=1`，`pp_serial.ps1 -Seconds 190` 抓到 907,540 字节日志、17 块截图、20 个 marker，无一条 `E (`：
+
+| 项 | 结果 |
+|---|---|
+| 主题原色取证 | `I (47619) settings: slider theme colour before override: ind=#ff000000 knob=#ff000000`，第二个滑块 `I (47629) settings: ...` 同值 → **设备端滑块本来就是纯黑**，紫色不在设备上 |
+| 覆盖后外观 | `05-settings.png` 已换成这一版：两条滑块都是「白底 + 黑描边轨道 + 黑色填充 + 黑色圆钮」，行距滑块钮在中点、亮度滑块钮约 58%，与其它控件的黑框风格一致 |
+| 网页端 | `input[type=range]{accent-color:#000}`；这段是纯 CSS，**没有浏览器实测**（PC 与设备这次不在同一网段，且没有无头浏览器可用） |
+| 回归 | 计划/倒数+闹钟/文件/音乐/AI/键盘/响铃浮层/专注/时钟暗/时钟亮/三击退出(`---TOURTAPEXIT active=0---`)/阅读器 16/阅读器 20/自动休眠(`---TOURSLEEP asleep=1 duty=0---`)/唤醒(`---TOURWAKE asleep=0 duty=603---`) 全部与 M14 一致 |
+| 二进制 | tour 版 `0x3799b0`；恢复 `PP_SCREEN_TOUR=0` 后正式版 `0x379220`（3,641,888 字节，剩 `0x76de0`），已烧录，`Hash of data verified.` |
+| 正式版启动 | `boot20.txt`：`display ready`@2.10s、`plans: loaded 3 plans, today 2026-10-24`、`alarms: loaded 1 alarms`、`ui: shell ready`@3.64s、`ready`@4.17s、`station got ip 192.168.10.104`@4.57s、`clock: RTC updated from SNTP`@7.12s；`E (` 计数 **0**，仍是那三条无害 `W`（3wire_spi 删 CS、GPIO16 冲突、SD 输入延迟） |
 
 ---
 
@@ -639,6 +666,7 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 | 45 | 网页上改亮度/主题，设备端看起来「没反应」 | 设备正处在熄屏状态，背光还是 0 | `h_config_post` 保存完检查 `pp_autosleep_active()`，若已熄屏就按新亮度把背光点回去；切「数据存 SD 卡」时同理 |
 | 46 | `git push` 到 github.com 一直 `Failed to connect ... after 21132 ms`，但 `curl https://api.github.com` 正常 | 这个网络到 `github.com` 的 A 记录（`20.205.243.166`）被丢包，而 `20.205.243.168`（api）、`20.205.243.165`（codeload）、`140.82.112.3` 都通 —— 换 IP 用 `curl --resolve` 立刻 200 | 用 GitHub **Git Data API** 发布：blobs → tree → commit → `PATCH /git/refs/heads/main`（force），102 个文件 15.6MB，一次成功；`git` 本身仍保留本地提交，待网络正常时再对齐 |
 | 47 | 本地 `git add -A` 把 55MB 的 `tools/arduino-cli.exe/.zip`、16 张临时截图、`_check.js` 也加进了索引 | 工作区是「项目 + 一堆早期实验」混住的，`.gitignore` 只写了实验目录名 | `git rm --cached` 剔除 + `.gitignore` 补 `tools/arduino-cli.*`、`pocketplan/n[2-4]*.png`、`pocketplan/main/www/_check.js`，再 `commit --amend`；入库前一定先 `git ls-files | wc -l` 和 `git ls-tree -r -l | sort -k4 -nr | head` 看一眼 |
+| 48 | 用户说「设置页的滑块条是紫色的」，但设备截图里滑块明明是黑的 | 两个原因叠在一起：① 设备截图是 `shot.c` 的 **1bpp PBM**，只按灰度阈值判墨，**颜色在截图里不存在**，所以截图既证明不了黑也证明不了紫；② 真正紫的是**网页端** `input[type=range]`，浏览器对未指定 `accent-color` 的 range 用的是 Material 默认靛紫 | 先用 `lv_obj_get_style_bg_color(LV_PART_INDICATOR/KNOB)` 把 LVGL 解析后的值打出来（`ind=#ff000000 knob=#ff000000` → 设备端本来就是黑），再改网页 `input[type=range]{accent-color:#000}`；设备端仍显式钉死三个 part 作为保险。**教训：截图不能用来判断颜色，要读样式值或背景色寄存器** |
 
 ---
 
@@ -652,7 +680,7 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 - `W (2048) gpio: conflict found for GPIO[16]` —— TP_INT 被复位代码与触摸驱动各配置一次，无害，待清理
 - **字体只有 16px / 20px 两档点阵**，没有中间字号：15px、18px 这类需求要么放大要么缩小；1bpp 也没有反锯齿，斜笔画在极小字号下会比矢量字体硬
 - 字体源文件 `.c` 合计 ~14.7MB，全量重编时编译器要多花几十秒；增量构建不受影响
-- 固件已到 **3.64MB / app 分区 3.94MB（0x378f10 = 3,641,104 字节，剩 12%，0x770f0 = 487,664 字节）**，再加功能（OTA、更多字体档位、MP3 解码）前必须先瘦身（例如裁掉 0x4E00-0x9FA5 里用不到的字，或把 20px 改成按需生成）
+- 固件已到 **3.64MB / app 分区 3.94MB（0x379220 = 3,641,888 字节，剩 12%，0x76de0 = 486,880 字节）**，再加功能（OTA、更多字体档位、MP3 解码）前必须先瘦身（例如裁掉 0x4E00-0x9FA5 里用不到的字，或把 20px 改成按需生成）
 - Windows 映射网络驱动器连 HTTP WebDAV 需要开 WebClient 服务；**尚未在真资源管理器里实测**（curl 层面全通）
 - 倒数日在**设备端只读**：屏幕没有中文输入法，增删改只能在网页端做（这是故意的取舍，不是没做完）
 - 专注模式目前只是「横屏时钟 + 已专注计时」：没有番茄钟倒计时/提醒、没有白噪音、不统计历史专注时长，退出即清零
@@ -680,6 +708,7 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 
 1. **网页端人工验收**（最优先，属上一轮的未闭环）：手机或电脑打开 `http://192.168.0.106/` → 打卡看是否即时反色、「倒数」tab 的闹钟编辑器能增删改、「设置」→「专注」能选倒数日与暗色、「设置」→「数据存储」能切 SD 卡并在状态里看到 `data_on_sd:true`（REST 层已全通，缺的只是 UI 手感）
    - **设备端手感验收**：点打卡圈（黑圆/空心圈切换）、设置里两个 chip 进出「专注/时钟模式」、音乐 tab 进入时是否先看到「读取中 N/115」
+   - **滑块颜色确认**（M14.2）：先在**手机网页**上确认「设置」里的亮度/行距滑块不再是紫色（`accent-color:#000` 是纯 CSS，没做过浏览器实测）；再在**设备屏**上看一眼两条滑块——设备端日志已证明是纯黑（`ind=#ff000000 knob=#ff000000`），显式样式只是保险
 2. **焊 PCM5102A**（GPIO43 BCLK / GPIO44 LRCK / GPIO4 DIN，3.3V + GND）→ M4 接 `esp_audio_codec` 解 MP3 → I2S 出声
 3. **触摸交互实测**：打卡按钮、阅读器翻页、设置滑块、AI 键盘（AI 要先在网页端填 DeepSeek Key）、闹钟「开/关」chip
 4. **Windows 映射实测**：资源管理器映射 `http://<设备IP>/`，把「拖拽拷书」这条最爽的路径走通
