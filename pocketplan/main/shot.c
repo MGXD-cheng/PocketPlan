@@ -95,26 +95,32 @@ esp_err_t pp_shot_pbm(uint8_t **out, size_t *out_len, uint32_t *out_w, uint32_t 
     if (!lvgl_port_lock(10000)) {
         return ESP_ERR_TIMEOUT;
     }
+    /* Flush anything still pending so the tree we snapshot is the frame the
+     * user is looking at, not a half-applied scroll/refresh. */
+    lv_obj_invalidate(lv_screen_active());
+    lv_refr_now(disp);
     /* Render the live widget tree into a scratch buffer instead of peeking at
      * the panel framebuffer: the RGB panel double buffers, so right after a big
      * redraw the "active" buffer can still hold the frame before last. */
-    lv_draw_buf_t *snap = lv_snapshot_take(lv_screen_active(), LV_COLOR_FORMAT_RGB565);
     uint32_t w = 0, h = 0;
     uint8_t *img = NULL;
     size_t size = 0;
-    if (snap != NULL) {
+    for (int attempt = 0; attempt < 3 && img == NULL; attempt++) {
+        lv_draw_buf_t *snap = lv_snapshot_take(lv_screen_active(), LV_COLOR_FORMAT_RGB565);
+        if (snap == NULL) {
+            /* ~600 KB from PSRAM can fail transiently right after a redraw. */
+            ESP_LOGW(TAG, "snapshot attempt %d failed", attempt);
+            vTaskDelay(pdMS_TO_TICKS(60));
+            continue;
+        }
         w = snap->header.w;
         h = snap->header.h;
         img = fold_rgb565(snap->data, w, h, snap->header.stride, &size);
         lv_draw_buf_destroy(snap);
-    } else {
-        lv_draw_buf_t *buf = lv_display_get_buf_active(disp);
-        if (buf != NULL && buf->data != NULL && buf->header.w > 0) {
-            w = buf->header.w;
-            h = buf->header.h;
-            img = fold_rgb565(buf->data, w, h, buf->header.stride, &size);
-        }
     }
+    /* Never fall back to the panel framebuffer: with the RGB panel's double buffering it can
+     * be half old / half new, which is exactly how the torn settings screenshot
+     * happened (two different x offsets in one image). */
     lvgl_port_unlock();
     if (img == NULL) {
         return ESP_ERR_NO_MEM;
@@ -397,7 +403,7 @@ static void tour_task(void *arg)
     lvgl_port_lock(0);
     pp_ui_show_tab(5);
     lvgl_port_unlock();
-    vTaskDelay(pdMS_TO_TICKS(1200));
+    vTaskDelay(pdMS_TO_TICKS(1800));
     printf("---TOURSETSETTINGS---\n");
     pp_shot_dump_serial();
     /* Same screen scrolled to the network section: proves the WebDAV switch is

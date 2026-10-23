@@ -436,7 +436,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 脚本内部做的事（缺一步就编译失败）：`$env:MSYSTEM=$null` → 设 `IDF_PATH` / `IDF_TOOLS_PATH` / `PYTHONUTF8=1` → `. activate.py --export` → 执行传入的 `-Command`。
 
 - 纯增量 **40–90 秒**；改了 `sdkconfig` 会触发全量重编，**约 15 分钟**
-- 成功标志：`Project build complete.` + `pocketplan.bin binary size 0x379e50 bytes. 0x761b0 bytes (12%) free.`（3,645,008 字节，app 分区 0x3f0000 = 4,128,768 字节，剩 483,760 字节）
+- 成功标志：`Project build complete.` + `pocketplan.bin binary size 0x379ed0 bytes. 0x76130 bytes (12%) free.`（3,645,136 字节，app 分区 0x3f0000 = 4,128,768 字节，剩 483,632 字节）
 - 编译**必须后台跑并轮询日志**（前台会超时）；日志是 UTF-16，用 `Select-String` 读，别用 `cat`
 
 ### 5.3 烧录
@@ -492,6 +492,7 @@ cd pocketplan && python decodetour.py ../tour32.log ../n32_   # 生成 ../n32_0.
 
 - `decodetour.py` 现在对丢字符的坏块是容错的：base64 自动补 `=` 到 4 的倍数、`ImageFile.LOAD_TRUNCATED_IMAGES = True`、逐块 try/except。串口 115200 下偶尔会截断一块（见 §七 第 42 条），跳过即可，不影响其余块。
 - 抓完图记得把 `PP_SCREEN_TOUR` 改回 0 再编一次——**交付版必须是 `PP_SCREEN_TOUR 0`**（当前已是 0），否则每次开机都被自检占用几十秒屏幕。
+- **截图可能是「撕裂」的**：`pp_shot_pbm()` 现在先 `lv_obj_invalidate()` + `lv_refr_now()`，再 `lv_snapshot_take()` 重试 3 次；**不再回退读面板帧缓冲**（双缓冲 + 直接模式下会拿到半新半旧的帧，产出左右两半错位的图）。拿到这种图不要怀疑 UI，重新抓一张即可（§七 第 54 条）。
 
 ---
 
@@ -677,7 +678,7 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 | 启动日志 | `I (2604) config: loaded config (ai model deepseek-chat, key set, cache_sd 0, webdav 0)`、`I (4084) webdav: WebDAV listening on port 80 (disabled)` → **默认关**生效，端口仍在监听 |
 | 异步音乐 | 新截图 `21-music-loading.png` 记录了「读取中 0/115」这一帧，说明列表确实是先进页面再分批建行 |
 | 回归 | 20 个 marker 全中：TOURTAB 0..5、TOURMUSICLOAD、TOURMUSIC、TOURDONE、TOURKEYBOARD、TOURALARM、TOURCACHE（跳过）、TOURFOCUS、TOURCLOCK、TOURCLOCKLIGHT、TOURTAPEXIT `active=0`、TOURREADER、TOURREADER20、TOURSETSETTINGS、**TOURWEBDABUI**、TOURSLEEP `asleep=1 duty=0`、TOURWAKE `asleep=0 duty=562`、TOURWEBDAB `default=0 port80=1`、TOUREND |
-| 二进制 | tour 版 `0x37a600`；恢复 `PP_SCREEN_TOUR=0` 后正式版 **`0x379e50`（3,645,008 字节，剩 `0x761b0` = 483,760 字节，12%）**，已烧录 `Hash of data verified.` |
+| 二进制 | tour 版 `0x37a660`；恢复 `PP_SCREEN_TOUR=0` 后正式版 **`0x379ed0`（3,645,136 字节，剩 `0x76130` = 483,632 字节，12%）**，已烧录 `Hash of data verified.` |
 | 正式版启动 | `boot21.txt`：`config: loaded config (… cache_sd 0, webdav 0)`@2.60s、`plans: loaded 3 plans, today 2026-10-24`@2.76s、`alarms: loaded 1 alarms`@2.92s、`webdav: … (disabled)` + `ready`@4.08s、`station got ip 192.168.10.104`@4.62s、`clock: RTC updated from SNTP`@7.31s；`E (` 计数 **0** |
 | 网页端 | `index.html` 的 19,864 字节 JS 过了 `node --check`；`grep accent-color` = 0（滑块已复原）；`waitBack` 出现 3 次；`#webdav` 的读取/保存/回填三处齐全。**HTTP 端到端这轮仍没做**：设备又落到 mesh 的 `192.168.10.104`，PC `192.168.0.105` 不在同一段，`curl` 两个地址都空响应 |
 
@@ -739,6 +740,7 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 | 51 | tour 里 `lv_obj_scroll_to_view(s_webdav_row, LV_ANIM_OFF)` 截图没滚动 | 设置页比一屏高，但 tab 容器在无触摸的 tour 里不滚；`scroll_to_view` 依赖滚动祖先，实测无效且不报错 | 截图专用：把「网络」卡片之上的卡片全部 `LV_OBJ_FLAG_HIDDEN`，再 `lv_obj_update_layout()` + `scroll_to_y(0)`，网络区块自然顶到上方（函数 `pp_settings_demo_webdav()`，只被 tour 调用） |
 | 52 | 用户反馈「每次重启，数据存储位置都变回设备内部存储」 | 设备端其实没回退：探针证明 `cache_sd` 跨重启是 1（`TOURCFG loaded=1 data_on_sd=1`）。是**网页端**在设备重启窗口里 `/api/config` 失败，`<select>` 停在 HTML 默认第一项 | `loadConfig()` 自动重试 4×1.5s；`saveStorage()` 成功后 `waitBack()` 每 2s 轮询 `/api/status`，设备回来再拉配置，不再显示成「设备内部存储」 |
 | 53 | WebDAV 想「关了就不能用」，但 handler 只能在 `httpd_start()` 前注册 | 靠注销/重注册实现开关要重启 httpd（连同 Web 页面一起断），切换要等重启 | 保持注册、请求时判定：十个 handler 首行 `if (!dav_enabled()) return dav_deny(req);`（404 + 「WebDAV is disabled」），开关即时生效、零重启 |
+| 54 | 设置页那张截图左右两半错位，同一行控件出现两次（用户一眼看出「截图是坏的」） | `pp_shot_pbm()` 里 `lv_snapshot_take()` 失败（480×640 RGB565 抓图要 ~600KB PSRAM，大重绘后可能瞬时不足）会**回退去读面板帧缓冲**，而 RGB 面板是双缓冲 + 直接模式，此刻很可能半帧新半帧旧 | 快照改成**重试 3 次**（每次间隔 60ms），抓图前先 `lv_obj_invalidate()` + `lv_refr_now()`；**彻底删掉回退面板缓冲那条路**——宁可返回 `ESP_ERR_NO_MEM` 也不产出撕裂图 |
 
 ---
 
@@ -752,7 +754,7 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 - `W (2048) gpio: conflict found for GPIO[16]` —— TP_INT 被复位代码与触摸驱动各配置一次，无害，待清理
 - **字体只有 16px / 20px 两档点阵**，没有中间字号：15px、18px 这类需求要么放大要么缩小；1bpp 也没有反锯齿，斜笔画在极小字号下会比矢量字体硬
 - 字体源文件 `.c` 合计 ~14.7MB，全量重编时编译器要多花几十秒；增量构建不受影响
-- 固件已到 **3.65MB / app 分区 3.94MB（0x379e50 = 3,645,008 字节，剩 12%，0x761b0 = 483,760 字节）**，再加功能（OTA、更多字体档位、MP3 解码）前必须先瘦身（例如裁掉 0x4E00-0x9FA5 里用不到的字，或把 20px 改成按需生成）
+- 固件已到 **3.65MB / app 分区 3.94MB（0x379ed0 = 3,645,136 字节，剩 12%，0x76130 = 483,632 字节）**，再加功能（OTA、更多字体档位、MP3 解码）前必须先瘦身（例如裁掉 0x4E00-0x9FA5 里用不到的字，或把 20px 改成按需生成）
 - Windows 映射网络驱动器连 HTTP WebDAV 需要开 WebClient 服务；**尚未在真资源管理器里实测**（curl 层面全通）
 - 倒数日在**设备端只读**：屏幕没有中文输入法，增删改只能在网页端做（这是故意的取舍，不是没做完）
 - 专注模式目前只是「横屏时钟 + 已专注计时」：没有番茄钟倒计时/提醒、没有白噪音、不统计历史专注时长，退出即清零
