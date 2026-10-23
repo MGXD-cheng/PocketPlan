@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PocketPlan</title>
+<style>
+:root{--blue:#1a73e8;--green:#34a853;--bg:#f4f6f9;--card:#fff;--line:#e3e6ea;--text:#202124;--dim:#5f6368}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);padding-bottom:76px}
+header{background:var(--blue);color:#fff;padding:14px 16px;position:sticky;top:0;z-index:20}
+header .row{display:flex;align-items:center;justify-content:space-between}
+header h1{font-size:18px;margin:0;font-weight:600}
+#status{font-size:12px;opacity:.9;margin-top:4px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--line);z-index:30}
+nav button{flex:1;border:0;background:none;padding:8px 0 10px;font-size:12px;color:var(--dim);display:flex;flex-direction:column;align-items:center;gap:2px}
+nav button span.i{font-size:18px;line-height:1}
+nav button.on{color:var(--blue);font-weight:600}
+main{padding:12px;max-width:720px;margin:0 auto}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.card h2{font-size:13px;color:var(--blue);margin:0 0 10px;font-weight:600;letter-spacing:.02em}
+.plan{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f0f2f5}
+.plan:last-child{border-bottom:0}
+.tick{width:30px;height:30px;border-radius:50%;border:2px solid #b0b6be;flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;cursor:pointer}
+.tick.done{background:var(--green);border-color:var(--green)}
+.plan .t{flex:1;min-width:0}
+.plan .t b{font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plan .t small{color:var(--dim)}
+.plan .acts{display:flex;gap:8px}
+.plan .acts button{border:0;background:#f1f3f4;border-radius:8px;padding:6px 10px;font-size:12px;color:var(--dim)}
+.empty{color:var(--dim);text-align:center;padding:24px 0;font-size:14px}
+button.primary{background:var(--blue);color:#fff;border:0;border-radius:10px;padding:11px 16px;font-size:14px;font-weight:500}
+button.ghost{background:#e8f0fe;color:var(--blue);border:0;border-radius:10px;padding:11px 16px;font-size:14px}
+button.danger{background:#fce8e6;color:#c5221f;border:0;border-radius:10px;padding:11px 16px;font-size:14px}
+input,select,textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:15px;background:#fff;font-family:inherit}
+label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+.row2{display:flex;gap:10px}.row2>*{flex:1}
+.days{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.days label{display:flex;align-items:center;gap:4px;font-size:13px;color:var(--text);margin:0;border:1px solid var(--line);padding:6px 9px;border-radius:8px}
+.days input{width:auto}
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;z-index:50}
+.mask.on{display:flex}
+.sheet{background:#fff;width:100%;max-height:88vh;overflow:auto;border-radius:16px 16px 0 0;padding:18px}
+.sheet h3{margin:0 0 8px;font-size:17px}
+.sheet .foot{display:flex;gap:10px;margin-top:18px}
+.sheet .foot button{flex:1}
+.grid{overflow-x:auto}
+table{border-collapse:collapse;font-size:12px;width:100%}
+th,td{padding:3px;text-align:center;color:var(--dim);white-space:nowrap}
+td.cell{cursor:pointer}
+td.cell i{display:inline-block;width:22px;height:22px;line-height:22px;border-radius:6px;background:#f1f3f4;font-style:normal;color:#9aa0a6}
+td.cell.on i{background:var(--green);color:#fff}
+td.cell.future i{opacity:.35}
+.crumb{font-size:13px;color:var(--dim);margin-bottom:8px;word-break:break-all}
+.fitem{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid #f0f2f5}
+.fitem:last-child{border-bottom:0}
+.fitem .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fitem .s{color:var(--dim);font-size:12px}
+.fitem .x{border:0;background:#f1f3f4;border-radius:6px;padding:4px 8px;font-size:12px;color:var(--dim)}
+.chat{height:44vh;overflow:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.msg{max-width:82%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+.msg.me{align-self:flex-end;background:#e8f0fe;border:1px solid #c6dafc}
+.msg.ai{align-self:flex-start;background:#fff;border:1px solid var(--line)}
+.pill{display:inline-block;padding:3px 9px;border-radius:99px;background:#f1f3f4;color:var(--dim);font-size:12px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:92px;background:#323232;color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:80;max-width:86vw}
+.toast.on{opacity:1}
+.hint{font-size:12px;color:var(--dim);line-height:1.5}
+</style>
+</head>
+<body>
+<header>
+  <div class="row"><h1>PocketPlan</h1><span class="pill" id="wifi">--</span></div>
+  <div id="status">正在连接设备…</div>
+</header>
+<main>
+  <section id="page-plans">
+    <div class="card"><h2>今天</h2><div id="today-list"></div>
+      <div style="margin-top:12px"><button class="primary" onclick="openPlan()">+ 新建计划</button></div>
+    </div>
+    <div class="card"><h2>全部计划</h2><div id="all-list"></div></div>
+  </section>
+
+  <section id="page-cd" hidden>
+    <div class="card" id="ring-card" hidden style="background:#fce8e6">
+      <h2 style="color:#c5221f">闹钟正在响</h2>
+      <div class="hint">点下面的按钮停止，或直接走到设备上点「停止」。</div>
+      <div style="margin-top:12px"><button class="danger" onclick="stopAlarm()">停止响铃</button></div>
+    </div>
+    <div class="card"><h2>闹钟</h2>
+      <div id="al-list"></div>
+      <div style="margin-top:12px"><button class="primary" onclick="openAl()">+ 新建闹钟</button></div>
+    </div>
+    <div class="card"><h2>倒数日</h2>
+      <div class="hint" id="cd-hint"></div>
+      <div id="cd-list"></div>
+      <div style="margin-top:12px"><button class="primary" onclick="openCd()">+ 新建倒数日</button></div>
+    </div>
+  </section>
+
+  <section id="page-check" hidden>
+    <div class="card"><h2>最近 14 天</h2><div class="hint">点格子可以补打卡或取消。</div><div class="grid"><table id="heat"></table></div></div>
+  </section>
+
+  <section id="page-files" hidden>
+    <div class="card">
+      <h2>SD 卡</h2>
+      <div class="crumb" id="crumb">/</div>
+      <div id="files"></div>
+      <div class="row2" style="margin-top:12px">
+        <button class="ghost" onclick="mkdir()">新建文件夹</button>
+        <button class="primary" onclick="document.getElementById('up').click()">上传文件</button>
+      </div>
+      <input id="up" type="file" multiple hidden onchange="upload(this)">
+    </div>
+  </section>
+
+  <section id="page-ai" hidden>
+    <div class="card">
+      <h2>AI 对话</h2>
+      <div class="chat" id="chat"></div>
+      <div class="row2"><input id="msg" placeholder="说点什么…" onkeydown="if(event.key==='Enter')sendAI()"><button class="primary" style="flex:0 0 84px" onclick="sendAI()">发送</button></div>
+      <div class="hint" style="margin-top:8px">可在「设置」里更换模型、Base URL 和角色设定。</div>
+    </div>
+  </section>
+
+  <section id="page-set" hidden>
+    <div class="card"><h2>WiFi</h2>
+      <div class="hint" id="wifihint"></div>
+      <label>SSID</label><input id="ssid" placeholder="WiFi 名称">
+      <label>密码</label><input id="pass" type="password" placeholder="WiFi 密码">
+      <div style="margin-top:12px"><button class="primary" onclick="saveWifi()">保存并连接</button></div>
+    </div>
+    <div class="card"><h2>AI</h2>
+      <label>Base URL</label><input id="ai_base" placeholder="https://api.deepseek.com/v1">
+      <label>API Key</label><input id="ai_key" type="password" placeholder="sk-... (留空表示不修改)">
+      <label>模型</label><input id="ai_model" placeholder="deepseek-chat">
+      <label>角色设定</label><textarea id="ai_persona" rows="3"></textarea>
+      <div style="margin-top:12px"><button class="primary" onclick="saveAI()">保存 AI 设置</button></div>
+    </div>
+    <div class="card"><h2>屏幕与阅读</h2>
+      <label>亮度 <b id="bri-v"></b></label><input id="brightness" type="range" min="10" max="100">
+      <label>字号</label><select id="font_size"><option value="16">16</option><option value="20">20</option></select>
+      <label>行距 <b id="ls-v"></b></label><input id="line_space" type="range" min="0" max="16">
+      <label>时区</label><input id="tz" placeholder="CST-8">
+      <div style="margin-top:12px"><button class="primary" onclick="saveScreen()">保存显示设置</button></div>
+    </div>
+    <div class="card"><h2>自动休眠</h2>
+      <label style="display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text)"><input id="auto_sleep" type="checkbox" style="width:auto">无操作时关闭背光（轻触屏幕唤醒）</label>
+      <label>休眠时间</label>
+      <select id="sleep_min"><option value="1">1 分钟</option><option value="3">3 分钟</option><option value="5">5 分钟</option><option value="10">10 分钟</option><option value="30">30 分钟</option></select>
+      <div class="hint" style="margin-top:8px">只关背光：WiFi、闹钟和网页都照常工作；闹钟响铃与时钟模式期间不会熄屏。</div>
+      <div style="margin-top:12px"><button class="primary" onclick="saveSleep()">保存休眠设置</button></div>
+    </div>
+    <div class="card"><h2>专注模式</h2>
+      <div class="hint">设备切换到横屏全屏时钟，轻触屏幕可退出。</div>
+      <label>时钟下方显示倒数日</label>
+      <select id="focus_cd"><option value="">不显示</option></select>
+      <label style="display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text)"><input id="focus_dark" type="checkbox" style="width:auto">暗色时钟（黑底白字）</label>
+      <div style="margin-top:12px"><button class="ghost" onclick="saveFocus()">保存专注设置</button></div>
+      <div class="row2" style="margin-top:12px">
+        <button class="primary" onclick="setFocus(true)">进入专注模式</button>
+        <button class="ghost" onclick="setFocus(false)">退出</button>
+      </div>
+    </div>
+    <div class="card"><h2>数据存储</h2>
+      <label>聊天、计划、倒数日、闹钟存到</label>
+      <select id="cache_sd"><option value="0">设备内部存储</option><option value="1">SD 卡</option></select>
+      <div class="hint" style="margin-top:8px">切换后设备会把文件搬到新位置并自动重启，约 3 秒。</div>
+      <div style="margin-top:12px"><button class="primary" onclick="saveStorage()">保存存储位置</button></div>
+    </div>
+    <div class="card"><h2>状态</h2><div id="sysinfo" class="hint"></div></div>
+  </section>
+</main>
+
+<nav>
+  <button data-tab="plans" class="on" onclick="tab('plans')"><span class="i">☑</span>计划</button>
+  <button data-tab="cd" onclick="tab('cd')"><span class="i">⏳</span>倒数</button>
+  <button data-tab="check" onclick="tab('check')"><span class="i">▦</span>打卡</button>
+  <button data-tab="files" onclick="tab('files')"><span class="i">▤</span>文件</button>
+  <button data-tab="ai" onclick="tab('ai')"><span class="i">✎</span>AI</button>
+  <button data-tab="set" onclick="tab('set')"><span class="i">⚙</span>设置</button>
+</nav>
+
+<div class="mask" id="sheet" onclick="if(event.target===this)closePlan()">
+  <div class="sheet">
+    <h3 id="sheet-title">新建计划</h3>
+    <input type="hidden" id="p_id">
+    <label>标题</label><input id="p_title" maxlength="90" placeholder="例如：读书 30 分钟">
+    <label>备注</label><input id="p_note" maxlength="150" placeholder="可选">
+    <label>重复</label>
+    <select id="p_repeat" onchange="repeatChanged()">
+      <option value="daily">每天</option><option value="weekly">每周</option>
+      <option value="once">仅一次</option><option value="interval">每 N 天</option>
+    </select>
+    <div id="wd-box" hidden><label>星期</label><div class="days" id="p_days"></div></div>
+    <div id="date-box" hidden><label>日期</label><input id="p_date" type="date"></div>
+    <div id="iv-box" hidden><label>间隔天数</label><input id="p_interval" type="number" min="1" max="365" value="2"></div>
+    <div class="foot"><button class="ghost" onclick="closePlan()">取消</button><button class="primary" onclick="savePlan()">保存</button></div>
+  </div>
+</div>
+<div class="mask" id="cdsheet" onclick="if(event.target===this)closeCd()">
+  <div class="sheet">
+    <h3 id="cdsheet-title">新建倒数日</h3>
+    <input type="hidden" id="c_id">
+    <label>标题</label><input id="c_title" maxlength="90" placeholder="例如：生日">
+    <label>日期</label><input id="c_date" type="date">
+    <label style="display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text)"><input id="c_yearly" type="checkbox" style="width:auto">每年重复</label>
+    <label>备注</label><input id="c_note" maxlength="150" placeholder="可选">
+    <div class="foot"><button class="ghost" onclick="closeCd()">取消</button><button class="primary" onclick="saveCd()">保存</button></div>
+  </div>
+</div>
+<div class="mask" id="alsheet" onclick="if(event.target===this)closeAl()">
+  <div class="sheet">
+    <h3 id="alsheet-title">新建闹钟</h3>
+    <input type="hidden" id="a_id">
+    <label>时间</label><input id="a_time" type="time" value="07:30">
+    <label>标签</label><input id="a_label" maxlength="40" placeholder="例如：起床">
+    <label>重复</label><div class="days" id="a_days"></div>
+    <div class="hint">一个都不勾选表示每天。</div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text)"><input id="a_enabled" type="checkbox" checked style="width:auto">启用</label>
+    <div class="foot"><button class="ghost" onclick="closeAl()">取消</button><button class="primary" onclick="saveAl()">保存</button></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const WD=["一","二","三","四","五","六","日"];
+let plans=[],today="",cfg={};
+function toast(t){const el=$("#toast");el.textContent=t;el.classList.add("on");clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove("on"),2200)}
+function api(path,opt={}){return fetch(path,opt).then(async r=>{const t=await r.text();if(!r.ok)throw new Error(t||r.status);try{return JSON.parse(t)}catch(e){return t}})}
+function tab(name){
+  document.querySelectorAll("main>section").forEach(s=>s.hidden=s.id!=="page-"+name);
+  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.tab===name));
+  if(name==="files")loadFiles();
+  if(name==="check")loadPlans();
+  if(name==="cd"){loadCds();loadAlarms()}
+  if(name==="ai")loadAI();
+  if(name==="set")loadConfig();
+}
+function fmtDate(d){return d}
+function loadStatus(){
+  api("/api/status").then(s=>{
+    $("#wifi").textContent=s.wifi.sta?"已联网":"热点";
+    $("#status").textContent=(s.wifi.sta?s.wifi.ssid+" · "+s.wifi.ip:s.wifi.ap_ssid+" · "+s.wifi.ap_ip)+" · "+s.time;
+    $("#sysinfo").innerHTML="SD "+(s.sd.mounted?(s.sd.free_kb/1024).toFixed(0)+" MB 可用 / "+(s.sd.total_kb/1024).toFixed(0)+" MB":"未挂载")+
+      "<br>内部存储 "+(s.lfs.ready?s.lfs.free_kb+" KB 可用":"未就绪")+
+      (s.mem?"<br>内部内存 "+(s.mem.internal_free/1024).toFixed(0)+" KB（最大块 "+(s.mem.internal_largest/1024).toFixed(0)+" KB）":"")+
+      "<br>固件 "+s.version;
+    $("#wifihint").textContent="当前 SSID："+(s.wifi.ssid||"未配置")+"，保存后设备会重启 WiFi 连接。";
+    $("#ring-card").hidden=!s.alarm_ringing;
+    if(!$("#ssid").value)$("#ssid").value=s.wifi.ssid||"";
+  }).catch(e=>{$("#status").textContent="连接失败："+e.message});
+}
+let cds=[],alarms=[];
+function fillFocusCd(){
+  const sel=$("#focus_cd");if(!sel)return;
+  const cur=(cfg&&cfg.focus_cd)||"";
+  sel.innerHTML='<option value="">不显示</option>'+cds.map(c=>'<option value="'+c.id+'">'+esc(c.title)+'</option>').join("");
+  sel.value=cur;
+  if(sel.value!==cur)sel.value="";
+}
+function saveFocus(){
+  const body={focus_dark:!!$("#focus_dark").checked,focus_cd:$("#focus_cd").value};
+  api("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(()=>{toast("专注设置已保存");loadConfig()}).catch(e=>toast("失败："+e.message));
+}
+function saveSleep(){
+  const body={auto_sleep:!!$("#auto_sleep").checked,sleep_min:+$("#sleep_min").value};
+  api("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(()=>{toast("休眠设置已保存");loadConfig()}).catch(e=>toast("失败："+e.message));
+}
+function saveStorage(){
+  const on=$("#cache_sd").value==="1";
+  api("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cache_sd:on})})
+    .then(()=>toast("正在迁移数据，设备即将重启")).catch(e=>toast("失败："+e.message));
+}
+function loadAlarms(){
+  return api("/api/alarms").then(d=>{
+    alarms=d.items||[];
+    const box=$("#al-list");if(!box)return;
+    box.innerHTML="";
+    if(!alarms.length)box.innerHTML='<div class="empty">还没有闹钟</div>';
+    alarms.forEach(a=>{
+      const div=document.createElement("div");div.className="plan";
+      div.innerHTML='<div class="t"><b></b><small></small></div><div class="acts"><button>开关</button><button>编辑</button><button>删除</button></div>';
+      div.querySelector("b").textContent=a.time+(a.label?"　"+a.label:"");
+      div.querySelector("small").textContent=repeatText(a.days)+(a.enabled?"":" · 已关闭");
+      const bs=div.querySelectorAll(".acts button");
+      bs[0].onclick=()=>api("/api/alarms",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:a.id,time:a.time,label:a.label,days:a.days,enabled:!a.enabled})})
+        .then(()=>{toast(!a.enabled?"已启用":"已关闭");loadAlarms()}).catch(e=>toast("失败："+e.message));
+      bs[1].onclick=()=>openAl(a);
+      bs[2].onclick=()=>delAl(a);
+      box.appendChild(div);
+    });
+  }).catch(e=>toast("读取闹钟失败"));
+}
+function repeatText(mask){
+  if(!mask)return "每天";
+  const names=["一","二","三","四","五","六","日"];let out="周";
+  names.forEach((n,i)=>{if(mask&(1<<i))out+=n});
+  return out;
+}
+function openAl(a){
+  $("#alsheet").classList.add("on");
+  $("#alsheet-title").textContent=a?"编辑闹钟":"新建闹钟";
+  $("#a_id").value=a?a.id:"";
+  $("#a_time").value=a?a.time:"07:30";
+  $("#a_label").value=a?a.label:"";
+  $("#a_enabled").checked=a?!!a.enabled:true;
+  document.querySelectorAll("#a_days input").forEach((el,i)=>el.checked=a?!!(a.days&(1<<i)):false);
+}
+function closeAl(){$("#alsheet").classList.remove("on")}
+function saveAl(){
+  const body={time:$("#a_time").value,label:$("#a_label").value.trim(),enabled:$("#a_enabled").checked};
+  if($("#a_id").value)body.id=$("#a_id").value;
+  if(!body.time){toast("请选择时间");return}
+  let m=0;document.querySelectorAll("#a_days input").forEach((el,i)=>{if(el.checked)m|=1<<i});
+  body.days=m;
+  api("/api/alarms",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(()=>{closeAl();toast("已保存");loadAlarms()}).catch(e=>toast("失败："+e.message));
+}
+function delAl(a){
+  if(!confirm("删除闹钟 "+a.time+"？"))return;
+  api("/api/alarms?id="+encodeURIComponent(a.id),{method:"DELETE"})
+    .then(()=>{toast("已删除");loadAlarms()}).catch(e=>toast("失败："+e.message));
+}
+function stopAlarm(){
+  api("/api/alarms/stop",{method:"POST"}).then(()=>{toast("已停止");$("#ring-card").hidden=true}).catch(e=>toast("失败："+e.message));
+}
+function loadAI(){
+  return api("/api/ai").then(d=>{
+    const box=$("#chat");if(!box)return;
+    box.innerHTML="";
+    const items=d.items||[];
+    items.forEach(m=>addMsg(m.text,m.role==="user"));
+    if(!items.length)addMsg("你好，我是 PocketPlan 的助手。可以问我问题，或者让我帮你理清今天的计划。",false);
+  }).catch(()=>{});
+}
+function loadCds(){
+  return api("/api/countdowns").then(d=>{
+    cds=d.items||[];
+    const box=$("#cd-list");box.innerHTML="";
+    const next=cds.filter(c=>c.days_left>=0);
+    $("#cd-hint").textContent=next.length?
+      (next[0].days_left===0?"就是今天 · "+next[0].title:"最近 "+next[0].days_left+" 天 · "+next[0].title):"全部已过";
+    fillFocusCd();
+    if(!cds.length)box.innerHTML='<div class="empty">还没有倒数日</div>';
+    cds.forEach(c=>{
+      const div=document.createElement("div");div.className="plan";
+      div.innerHTML='<div class="t"><b></b><small></small></div><div class="acts"><button>编辑</button><button>删除</button></div>';
+      div.querySelector("b").textContent=c.title;
+      const when=c.days_left<0?"已过 "+(-c.days_left)+" 天":c.days_left===0?"就是今天":c.days_left===1?"明天":"还有 "+c.days_left+" 天";
+      div.querySelector("small").textContent=when+" · "+(c.yearly?"每年 "+c.date.slice(5):c.date)+(c.note?" · "+c.note:"");
+      const bs=div.querySelectorAll(".acts button");
+      bs[0].onclick=()=>openCd(c);
+      bs[1].onclick=()=>delCd(c);
+      box.appendChild(div);
+    });
+  }).catch(e=>toast("读取倒数日失败"));
+}
+function openCd(c){
+  $("#cdsheet").classList.add("on");
+  $("#cdsheet-title").textContent=c?"编辑倒数日":"新建倒数日";
+  $("#c_id").value=c?c.id:"";
+  $("#c_title").value=c?c.title:"";
+  $("#c_date").value=c&&c.date?c.date:today;
+  $("#c_yearly").checked=c?!!c.yearly:false;
+  $("#c_note").value=c?c.note:"";
+}
+function closeCd(){$("#cdsheet").classList.remove("on")}
+function saveCd(){
+  const body={title:$("#c_title").value.trim(),date:$("#c_date").value,yearly:$("#c_yearly").checked,note:$("#c_note").value.trim()};
+  if($("#c_id").value)body.id=$("#c_id").value;
+  if(!body.title){toast("标题不能为空");return}
+  if(!body.date){toast("请选择日期");return}
+  api("/api/countdowns",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(()=>{closeCd();toast("已保存");loadCds()}).catch(e=>toast("失败："+e.message));
+}
+function delCd(c){
+  if(!confirm("删除倒数日「"+c.title+"」？"))return;
+  api("/api/countdowns?id="+encodeURIComponent(c.id),{method:"DELETE"}).then(()=>{toast("已删除");loadCds()}).catch(e=>toast("失败："+e.message));
+}
+function setFocus(on){
+  api("/api/focus",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({on})})
+    .then(d=>toast(d.focus?"已进入专注模式":"已退出专注模式")).catch(e=>toast("失败："+e.message));
+}
+function loadPlans(){
+  return api("/api/plans").then(d=>{
+    plans=d.plans||[];today=d.today;
+    const tl=$("#today-list");tl.innerHTML="";
+    const act=plans.filter(p=>p.active_today&&!p.archived);
+    if(!act.length)tl.innerHTML='<div class="empty">今天没有计划</div>';
+    act.forEach(p=>{
+      const div=document.createElement("div");div.className="plan";
+      div.innerHTML='<div class="tick '+(p.done_today?"done":"")+'">'+(p.done_today?"✓":"")+'</div>'+
+        '<div class="t"><b></b><small></small></div>'+
+        '<div class="acts"><button>编辑</button></div>';
+      div.querySelector("b").textContent=p.title;
+      div.querySelector("small").textContent=sub(p);
+      const tick=div.querySelector(".tick");
+      tick.dataset.id=p.id;
+      tick.onclick=()=>checkin(p.id,!p.done_today,undefined,tick);
+      div.querySelector(".acts button").onclick=()=>openPlan(p);
+      tl.appendChild(div);
+    });
+    const al=$("#all-list");al.innerHTML="";
+    if(!plans.length)al.innerHTML='<div class="empty">还没有计划</div>';
+    plans.forEach(p=>{
+      const div=document.createElement("div");div.className="plan";
+      div.innerHTML='<div class="t"><b></b><small></small></div><div class="acts"><button>编辑</button><button>删除</button></div>';
+      div.querySelector("b").textContent=p.title+(p.archived?" (已归档)":"");
+      div.querySelector("small").textContent=sub(p)+" · 累计 "+p.total+" 次";
+      const bs=div.querySelectorAll(".acts button");
+      bs[0].onclick=()=>openPlan(p);
+      bs[1].onclick=()=>delPlan(p);
+      al.appendChild(div);
+    });
+    renderHeat();
+  });
+}
+function sub(p){
+  if(p.repeat==="weekly"){let d=[];for(let i=0;i<7;i++)if(p.weekdays&(1<<i))d.push(WD[i]);return "每周 "+(d.join(" ")||"—")+" · 连续 "+p.streak+" 天"}
+  if(p.repeat==="once")return "一次 · "+p.date;
+  if(p.repeat==="interval")return "每 "+p.interval+" 天 · 连续 "+p.streak+" 天";
+  return "每天 · 连续 "+p.streak+" 天";
+}
+/* Paint the tick before the request leaves: the board answers in a few
+ * hundred milliseconds, which felt like the tap had been ignored. */
+function markCheck(el,done){
+  if(!el)return;
+  if(el.classList.contains("tick")){
+    el.classList.toggle("done",done);
+    el.textContent=done?"✓":"";
+  }else{
+    el.classList.toggle("on",done);
+    const i=el.querySelector("i");
+    if(i)i.textContent=done?"✓":((el.dataset.d||"").slice(8));
+  }
+}
+function checkin(id,done,date,el){
+  const was=el?(el.classList.contains("tick")?el.classList.contains("done"):el.classList.contains("on")):done;
+  markCheck(el,done);
+  if(el)el.style.opacity=".6";
+  return api("/api/checkin",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,done,date})})
+    .then(d=>{
+      if(el)el.style.opacity="";
+      if(d&&d.plans){/* the answer carries the fresh list when available */}
+      toast(done?"已打卡":"已取消");
+      return loadPlans();
+    }).catch(e=>{
+      if(el)el.style.opacity="";
+      markCheck(el,was);
+      toast("失败："+e.message);
+    });
+}
+function delPlan(p){
+  if(!confirm("删除计划「"+p.title+"」？打卡记录也会一起删除。"))return;
+  api("/api/plans?id="+encodeURIComponent(p.id),{method:"DELETE"}).then(()=>{toast("已删除");loadPlans()}).catch(e=>toast("失败："+e.message));
+}
+function openPlan(p){
+  $("#sheet").classList.add("on");
+  $("#sheet-title").textContent=p?"编辑计划":"新建计划";
+  $("#p_id").value=p?p.id:"";
+  $("#p_title").value=p?p.title:"";
+  $("#p_note").value=p?p.note:"";
+  $("#p_repeat").value=p?p.repeat:"daily";
+  $("#p_date").value=p&&p.date?p.date:today;
+  $("#p_interval").value=p&&p.interval?p.interval:2;
+  document.querySelectorAll("#p_days input").forEach((el,i)=>el.checked=p?!!(p.weekdays&(1<<i)):false);
+  repeatChanged();
+}
+function closePlan(){$("#sheet").classList.remove("on")}
+function repeatChanged(){
+  const r=$("#p_repeat").value;
+  $("#wd-box").hidden=r!=="weekly";
+  $("#date-box").hidden=r!=="once";
+  $("#iv-box").hidden=r!=="interval";
+}
+function savePlan(){
+  const body={title:$("#p_title").value.trim(),note:$("#p_note").value.trim(),repeat:$("#p_repeat").value};
+  if($("#p_id").value)body.id=$("#p_id").value;
+  if(body.repeat==="weekly"){let m=0;document.querySelectorAll("#p_days input").forEach((el,i)=>{if(el.checked)m|=1<<i});body.weekdays=m}
+  if(body.repeat==="once")body.date=$("#p_date").value;
+  if(body.repeat==="interval")body.interval=parseInt($("#p_interval").value||"1");
+  if(!body.title){toast("标题不能为空");return}
+  api("/api/plans",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(()=>{closePlan();toast("已保存");loadPlans()}).catch(e=>toast("失败："+e.message));
+}
+function renderHeat(){
+  const t=$("#heat");if(!t)return;
+  const dates=[];const base=new Date(today+"T12:00:00");
+  for(let i=13;i>=0;i--){const d=new Date(base);d.setDate(d.getDate()-i);dates.push(d.toISOString().slice(0,10))}
+  let h="<tr><th></th>"+dates.map(d=>"<th>"+d.slice(5).replace("-","/")+"</th>").join("")+"</tr>";
+  plans.filter(p=>!p.archived).forEach(p=>{
+    h+="<tr><td style='text-align:left;max-width:110px;overflow:hidden;text-overflow:ellipsis'>"+esc(p.title)+"</td>";
+    dates.forEach(d=>{
+      const on=p.checkins&&p.checkins[d];const future=d>today;
+      h+="<td class='cell"+(on?" on":"")+(future?" future":"")+"' data-id='"+p.id+"' data-d='"+d+"'><i>"+(on?"✓":d.slice(8))+"</i></td>";
+    });
+    h+="</tr>";
+  });
+  t.innerHTML=h;
+  t.querySelectorAll("td.cell").forEach(td=>{
+    td.onclick=()=>{if(td.classList.contains("future"))return;checkin(td.dataset.id,!td.classList.contains("on"),td.dataset.d,td)};
+  });
+}
+function esc(s){return s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+let cwd="";
+function loadFiles(){
+  api("/api/files?path="+encodeURIComponent(cwd)).then(d=>{
+    $("#crumb").textContent="/"+cwd;
+    const box=$("#files");box.innerHTML="";
+    if(cwd){const up=document.createElement("div");up.className="fitem";up.innerHTML='<div class="n">.. 返回上级</div>';
+      up.onclick=()=>{cwd=cwd.includes("/")?cwd.slice(0,cwd.lastIndexOf("/")):"";loadFiles()};box.appendChild(up)}
+    if(!d.entries.length)box.innerHTML+='<div class="empty">空文件夹</div>';
+    d.entries.forEach(e=>{
+      const div=document.createElement("div");div.className="fitem";
+      div.innerHTML='<div class="n">'+(e.dir?"📁 ":"📄 ")+'</div><div class="s">'+(e.dir?"":(e.size/1024).toFixed(0)+" KB")+'</div><button class="x">删</button>';
+      div.querySelector(".n").textContent+="";
+      div.querySelector(".n").innerHTML=(e.dir?"📁 ":"📄 ")+esc(e.name);
+      div.querySelector(".n").onclick=()=>{const p=cwd?cwd+"/"+e.name:e.name;
+        if(e.dir){cwd=p;loadFiles()}else{window.location="/"+p.split("/").map(encodeURIComponent).join("/")}};
+      div.querySelector(".x").onclick=()=>{
+        const p=cwd?cwd+"/"+e.name:e.name;
+        if(!confirm("删除 "+e.name+"？"))return;
+        fetch("/"+p.split("/").map(encodeURIComponent).join("/"),{method:"DELETE"}).then(r=>{if(r.ok){toast("已删除");loadFiles()}else toast("删除失败")});
+      };
+      box.appendChild(div);
+    });
+  }).catch(e=>toast("读取失败："+e.message));
+}
+function mkdir(){
+  const n=prompt("新文件夹名称");if(!n)return;
+  const p=(cwd?cwd+"/":"")+n;
+  fetch("/"+p.split("/").map(encodeURIComponent).join("/"),{method:"MKCOL"}).then(r=>{if(r.ok||r.status===405){toast("已创建");loadFiles()}else toast("创建失败")});
+}
+function upload(input){
+  const files=[...input.files];input.value="";
+  if(!files.length)return;
+  let chain=Promise.resolve();
+  files.forEach(f=>{chain=chain.then(()=>fetch("/"+(cwd?cwd+"/":"")+encodeURIComponent(f.name),{method:"PUT",body:f})
+    .then(r=>{if(!r.ok&&r.status!==201&&r.status!==204)throw new Error("HTTP "+r.status)}))});
+  chain.then(()=>{toast("上传完成");loadFiles()}).catch(e=>toast("上传失败："+e.message));
+}
+function loadConfig(){
+  api("/api/config").then(c=>{
+    cfg=c;
+    $("#ai_base").value=c.ai_base;$("#ai_model").value=c.ai_model;$("#ai_persona").value=c.ai_persona;
+    $("#ai_key").value="";$("#ai_key").placeholder=c.key_set?"已配置，留空则不修改":"sk-...";
+    $("#brightness").value=c.brightness;$("#bri-v").textContent=c.brightness;
+    $("#line_space").value=c.line_space;$("#ls-v").textContent=c.line_space;
+    $("#font_size").value=c.font_size;$("#tz").value=c.tz;
+    $("#focus_dark").checked=!!c.focus_dark;
+    $("#cache_sd").value=c.cache_sd?"1":"0";
+    $("#auto_sleep").checked=!!c.auto_sleep;$("#sleep_min").value=String(c.sleep_min||5);
+    fillFocusCd();
+  }).catch(e=>toast("读取设置失败"));
+}
+$("#brightness").oninput=e=>$("#bri-v").textContent=e.target.value;
+$("#line_space").oninput=e=>$("#ls-v").textContent=e.target.value;
+function saveScreen(){
+  api("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+    brightness:+$("#brightness").value,font_size:+$("#font_size").value,
+    line_space:+$("#line_space").value,tz:$("#tz").value.trim()})})
+  .then(()=>{toast("已保存");loadConfig()}).catch(e=>toast("失败："+e.message));
+}
+function saveAI(){
+  const b={ai_base:$("#ai_base").value.trim(),ai_model:$("#ai_model").value.trim(),ai_persona:$("#ai_persona").value};
+  if($("#ai_key").value.trim())b.ai_key=$("#ai_key").value.trim();
+  api("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)})
+   .then(()=>{toast("AI 设置已保存");loadConfig()}).catch(e=>toast("失败："+e.message));
+}
+function saveWifi(){
+  const ssid=$("#ssid").value.trim();if(!ssid){toast("请输入 SSID");return}
+  api("/api/wifi",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ssid,password:$("#pass").value})})
+   .then(()=>{toast("已保存，设备正在连接");setTimeout(loadStatus,4000)}).catch(e=>toast("失败："+e.message));
+}
+function addMsg(text,me){
+  const d=document.createElement("div");d.className="msg "+(me?"me":"ai");
+  /* The model answers in Markdown; show it as plain text. */
+  d.textContent=me?text:String(text==null?"":text).replace(/\*/g,"");
+  $("#chat").appendChild(d);$("#chat").scrollTop=$("#chat").scrollHeight;return d;
+}
+function sendAI(){
+  const m=$("#msg").value.trim();if(!m)return;
+  $("#msg").value="";addMsg(m,true);const pending=addMsg("正在思考…",false);
+  api("/api/ai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:m})})
+   .then(d=>{pending.textContent=d.reply||"(空)";$("#chat").scrollTop=$("#chat").scrollHeight})
+   .catch(e=>{pending.textContent="请求失败："+e.message});
+}
+document.querySelectorAll("#p_days").forEach(box=>{
+  box.innerHTML=WD.map((w,i)=>"<label><input type='checkbox' value='"+i+"'>"+w+"</label>").join("");
+});
+document.querySelector("#a_days").innerHTML=WD.map((w,i)=>"<label><input type='checkbox' value='"+i+"'>"+w+"</label>").join("");
+loadStatus();loadPlans();loadConfig();loadCds();
+setInterval(loadStatus,15000);
+</script>
+</body>
+</html>

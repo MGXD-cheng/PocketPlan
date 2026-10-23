@@ -1,0 +1,50 @@
+# ---- build output ----
+pocketplan/build/
+pocketplan/managed_components/
+build/
+*.bin
+*.elf
+*.map
+*.pbm
+*.bmp
+
+# ---- logs / captures ----
+*.log
+build*.txt
+
+# ---- local / personal scratch (this workspace holds earlier experiments) ----
+case/
+demo/
+firmware/
+idf/
+i2cscan/
+lcdtest/
+mpy/
+ref/
+ref2/
+sdtest/
+xz/
+files.json
+hdr.bin
+boot-log.txt
+flash-report.md
+i2c-scan-report.md
+v2.2.6_waveshare-esp32-s3-cam-2.8.zip
+shot*.bmp
+pocketplan/nvs-backup.bin
+pocketplan/pp-nvs.bin
+pocketplan/pp-nvs.csv
+pocketplan/miss.txt
+pocketplan/misslines.txt
+pocketplan/main/www/_check.js
+pocketplan/n4*.png
+pocketplan/n3*.png
+pocketplan/n2*.png
+
+# ---- earlier Arduino experiments: 55 MB of CLI, not part of this project ----
+tools/arduino-cli.exe
+tools/arduino-cli.zip
+tools/run.ps1
+tools/setup.ps1
+.fontgen/*.png
+.fontgen/*.log

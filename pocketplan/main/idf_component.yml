@@ -1,0 +1,10 @@
+## IDF Component Manager manifest for PocketPlan
+dependencies:
+  idf: ">=6.0"
+  espressif/cjson: "^1.7.19"
+  espressif/esp_lcd_st7701: "^2.0.2"
+  espressif/esp_lcd_panel_io_additions: "^1.0.1"
+  espressif/esp_io_expander_tca9554: "^2.0.3"
+  espressif/esp_lcd_touch_gt911: "^1.2.0"
+  espressif/esp_lvgl_port: "~2.9.0"
+  lvgl/lvgl: "~9.5.0"

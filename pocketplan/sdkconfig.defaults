@@ -1,0 +1,52 @@
+# PocketPlan defaults
+
+CONFIG_IDF_TARGET="esp32s3"
+
+# 16 MB flash, custom partition table (shared layout with the xiaozhi firmware)
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Octal PSRAM at 80 MHz (the RGB framebuffers live there)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+
+# FatFS: long names, GBK codepage so Chinese file names survive exFAT/FAT
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+CONFIG_FATFS_CODEPAGE_936=y
+# ANSI/OEM (GBK) on the API side: names come back as GBK bytes and are converted
+# to UTF-8 by main/gbk.c before they reach LVGL or the HTTP layer.
+CONFIG_FATFS_API_ENCODING_UTF_8=y
+
+# HTTP server has to accept long WebDAV URIs and headers
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
+CONFIG_HTTPD_MAX_URI_LEN=2048
+
+# Task watchdog: the SD + WebDAV stack can block a while on big transfers
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=20
+
+CONFIG_LWIP_MAX_SOCKETS=16
+
+# LVGL: RGB565 panels. The UI uses our own 1bpp SimHei fonts
+# (main/fonts/pp_font_16.c and pp_font_20.c) installed as the theme font in
+# board.c; the stock Source Han Sans subsets only cover ~1000 hand-picked
+# characters, so they are switched off to reclaim ~2.2 MB of flash.
+CONFIG_LV_COLOR_DEPTH_16=y
+CONFIG_LV_COLOR_DEPTH=16
+# LVGL's built-in 64 kB pool is far too small for a file browser; use the
+# C library allocator so widgets can live in PSRAM.
+CONFIG_LV_USE_CLIB_MALLOC=y
+CONFIG_LV_USE_CLIB_STRING=y
+CONFIG_LV_USE_CLIB_SPRINTF=y
+# An assert on a failed allocation turns a recoverable OOM into a hang.
+CONFIG_LV_USE_ASSERT_NULL=n
+CONFIG_LV_USE_ASSERT_MALLOC=n
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=0
+
+# Needed by GET /api/screenshot (debug: dump the LVGL screen as BMP).
+CONFIG_LV_USE_SNAPSHOT=y
