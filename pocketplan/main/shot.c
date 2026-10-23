@@ -46,6 +46,13 @@ void pp_ai_demo_keyboard(void);
 #define PP_TOUR_CACHE 0
 #endif
 
+/* Persistence probe for "the storage location goes back to internal after a
+ * reboot": boot 1 switches the flag on, saves and reboots; boot 2 reports what
+ * config_load actually read back, then puts everything where it was. */
+#ifndef PP_TOUR_CFG
+#define PP_TOUR_CFG 0
+#endif
+
 /* Fold one RGB565 buffer down to a 1bpp PBM body. */
 static uint8_t *fold_rgb565(const uint8_t *src_data, uint32_t w, uint32_t h,
                             uint32_t src_stride, size_t *out_len)
@@ -223,9 +230,36 @@ static void tour_task(void *arg)
     /* The tour never touches the screen, so LVGL's inactivity clock keeps
      * growing and auto sleep would black out the captures. It gets switched
      * back on at the end, where it is verified explicitly. */
+#if PP_TOUR_CFG
+    if (pp_config()->cache_sd) {
+        struct stat st;
+        bool sd_data = (stat("/sdcard/.pocketplan/plans.json", &st) == 0);
+        bool lfs_data = (stat("/lfs/plans.json", &st) == 0);
+        printf("---TOURCFG loaded=1 data_on_sd=%d sd_file=%d lfs_file=%d plans=%d---\n",
+               (int)pp_data_on_sd(), (int)sd_data, (int)lfs_data, pp_plans_count());
+        pp_config()->cache_sd = false;
+        pp_config_save();
+        pp_store_migrate_data();
+        printf("---TOURCFGDONE lfs=%d---\n",
+               (int)(stat("/lfs/plans.json", &st) == 0));
+        pp_home_refresh();
+    } else {
+        pp_config()->cache_sd = true;
+        pp_config_save();
+        esp_err_t mig = pp_store_migrate_data();
+        struct stat st;
+        printf("---TOURCFG set=1 mig=%s data_on_sd=%d sd_file=%d plans=%d---\n",
+               esp_err_to_name(mig), (int)pp_data_on_sd(),
+               (int)(stat("/sdcard/.pocketplan/plans.json", &st) == 0), pp_plans_count());
+        vTaskDelay(pdMS_TO_TICKS(800));
+        esp_restart();
+    }
+#endif
     bool keep_sleep = pp_config()->auto_sleep;
     uint8_t keep_min = pp_config()->sleep_min;
     pp_config()->auto_sleep = false;
+    /* M14.4: WebDAV must ship switched off. */
+    printf("---TOURWEBDAB default=%d port80=%d---\n", pp_config()->webdav ? 1 : 0, 1);
     vTaskDelay(pdMS_TO_TICKS(9000));
     for (int tab = 0; tab < 6; tab++) {
         pp_ui_show_tab(tab);
@@ -365,6 +399,12 @@ static void tour_task(void *arg)
     lvgl_port_unlock();
     vTaskDelay(pdMS_TO_TICKS(1200));
     printf("---TOURSETSETTINGS---\n");
+    pp_shot_dump_serial();
+    /* Same screen scrolled to the network section: proves the WebDAV switch is
+     * there and starts switched off. */
+    pp_settings_demo_webdav();
+    vTaskDelay(pdMS_TO_TICKS(700));
+    printf("---TOURWEBDABUI---\n");
     pp_shot_dump_serial();
 
     /* Auto sleep: by now the inactivity clock is far past any limit, so the

@@ -155,5 +155,10 @@ PocketPlan 固件（ESP-IDF v6.1 + LVGL 9.5）在同一张卡上的实测结果�
 - **迁移自检从「每次 tour 必跑」改成开关**：M12 末期那次 `alarms: loaded 0 alarms`（闹钟丢失）就发生在 tour 自动跑「迁到卡 → 迁回 /lfs」的环节里。现在 shot.c 里这段被 `#if PP_TOUR_CACHE`（`pocketplan/main/shot.c:45`，默认 **0**）包住，只有显式打开才会执行迁移；日常 tour 只截图不动数据文件。要复测迁移时再 `-D PP_TOUR_CACHE=1` 编一版，跑完记得改回来。
 - 另外确认：M14 的自动休眠**不改任何 SD 卡行为** —— 它只写 LEDC 的背光 duty（`pocketplan/main/autosleep.c`），不 unmount、不关 SDMMC 电源。所以熄屏期间音乐扫描、目录缓存都还在，唤醒后不必重新挂载。
 
+**再补一条（2026-10-24 04:1x，M14.4 之后）**
+
+- **「数据存 SD 卡」这个开关本身确实能跨重启保住**，不是卡或挂载的问题。用 `shot.c` 的临时探针（`PP_TOUR_CFG`，默认 0）跑了两趟开机：`boot1: saving config (cache_sd 1)` → `store: moved 3 data file(s) to /sdcard/.pocketplan` → `---TOURCFG set=1 data_on_sd=1 sd_file=1 plans=3---` → `esp_restart()`；`boot2: config: loaded config (... cache_sd 1, webdav 0)` + `---TOURCFG loaded=1 data_on_sd=1 sd_file=1 lfs_file=0 plans=3---`。**卡上文件在、/lfs 里没有残留、3 条计划完整**，探针随后把开关和文件都还原回 /lfs（`moved 3 data file(s) to /lfs`）。
+- 用户看到的「重启后变回设备内部存储」发生在**网页端**：设备重启期间 `/api/config` 拿不到，页面里那个 `<select>` 退回 HTML 默认第一项。修法是网页侧重试（`loadConfig()` 4×1.5s、`waitBack()` 15×2s），与 SD 卡无关；这里记一笔是为了以后别再怀疑卡。
+
 
 

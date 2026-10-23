@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include "board.h"
+#include "config.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "gbk.h"
@@ -272,8 +273,29 @@ static esp_err_t send_xml(httpd_req_t *req, buf_t *b, const char *status)
 }
 
 /* --------------------------------- handlers ------------------------------ */
+/* WebDAV is opt-in: mounting the card as a network drive hands out read/write
+ * access to every file on it to anyone on the LAN, while a plain browser only
+ * needs the REST API. So config->webdav defaults to false, the handlers stay
+ * registered (the URI table is fixed at httpd_start) and every WebDAV request
+ * is refused while the switch is off - flipping the switch therefore takes
+ * effect immediately, with no reboot and no re-registration. */
+static bool dav_enabled(void)
+{
+    return pp_config()->webdav;
+}
+
+static esp_err_t dav_deny(httpd_req_t *req)
+{
+    httpd_resp_set_status(req, "404 Not Found");
+    httpd_resp_set_type(req, "text/plain");
+    return httpd_resp_send(req, "WebDAV is disabled", HTTPD_RESP_USE_STRLEN);
+}
+
 static esp_err_t h_options(httpd_req_t *req)
 {
+    if (!dav_enabled()) {
+        return dav_deny(req);
+    }
     httpd_resp_set_hdr(req, "DAV", "1, 2");
     httpd_resp_set_hdr(req, "MS-Author-Via", "DAV");
     httpd_resp_set_hdr(req, "Allow",
@@ -284,6 +306,9 @@ static esp_err_t h_options(httpd_req_t *req)
 
 static esp_err_t h_propfind(httpd_req_t *req)
 {
+    if (!dav_enabled()) {
+        return dav_deny(req);
+    }
     char uri_path[PATHBUF];
     decode_uri(req, uri_path, sizeof(uri_path));
     char fs_path[PATHBUF];
@@ -390,6 +415,9 @@ static esp_err_t send_file(httpd_req_t *req, const char *uri_path, const char *f
 
 static esp_err_t h_get(httpd_req_t *req)
 {
+    if (!dav_enabled()) {
+        return dav_deny(req);
+    }
     char uri_path[PATHBUF];
     decode_uri(req, uri_path, sizeof(uri_path));
     char fs_path[PATHBUF];
@@ -399,6 +427,9 @@ static esp_err_t h_get(httpd_req_t *req)
 
 static esp_err_t h_head(httpd_req_t *req)
 {
+    if (!dav_enabled()) {
+        return dav_deny(req);
+    }
     char uri_path[PATHBUF];
     decode_uri(req, uri_path, sizeof(uri_path));
     char fs_path[PATHBUF];
@@ -408,6 +439,9 @@ static esp_err_t h_head(httpd_req_t *req)
 
 static esp_err_t h_put(httpd_req_t *req)
 {
+    if (!dav_enabled()) {
+        return dav_deny(req);
+    }
     char uri_path[PATHBUF];
     decode_uri(req, uri_path, sizeof(uri_path));
     char fs_path[PATHBUF];
@@ -476,6 +510,9 @@ static esp_err_t remove_recursive(const char *path)
 
 static esp_err_t h_delete(httpd_req_t *req)
 {
+    if (!dav_enabled()) {
+        return dav_deny(req);
+    }
     char uri_path[PATHBUF];
     decode_uri(req, uri_path, sizeof(uri_path));
     if (strcmp(uri_path, "/") == 0) {
@@ -495,6 +532,9 @@ static esp_err_t h_delete(httpd_req_t *req)
 
 static esp_err_t h_mkcol(httpd_req_t *req)
 {
+    if (!dav_enabled()) {
+        return dav_deny(req);
+    }
     char uri_path[PATHBUF];
     decode_uri(req, uri_path, sizeof(uri_path));
     char fs_path[PATHBUF];
@@ -516,6 +556,9 @@ static esp_err_t h_mkcol(httpd_req_t *req)
 
 static esp_err_t h_move(httpd_req_t *req)
 {
+    if (!dav_enabled()) {
+        return dav_deny(req);
+    }
     char dest_hdr[PATHBUF];
     if (httpd_req_get_hdr_value_str(req, "Destination", dest_hdr, sizeof(dest_hdr)) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no Destination header");
@@ -549,6 +592,9 @@ static esp_err_t h_move(httpd_req_t *req)
 
 static esp_err_t h_proppatch(httpd_req_t *req)
 {
+    if (!dav_enabled()) {
+        return dav_deny(req);
+    }
     char uri_path[PATHBUF];
     decode_uri(req, uri_path, sizeof(uri_path));
     buf_t b;
@@ -565,6 +611,9 @@ static esp_err_t h_proppatch(httpd_req_t *req)
 
 static esp_err_t h_lock(httpd_req_t *req)
 {
+    if (!dav_enabled()) {
+        return dav_deny(req);
+    }
     buf_t b;
     buf_init(&b, 512);
     buf_addf(&b,
@@ -777,6 +826,6 @@ esp_err_t pp_webdav_start(void)
             ESP_LOGW(TAG, "register %s failed: %s", handlers[i].uri, esp_err_to_name(e));
         }
     }
-    ESP_LOGI(TAG, "WebDAV listening on port 80");
+    ESP_LOGI(TAG, "WebDAV listening on port 80 (%s)", pp_config()->webdav ? "enabled" : "disabled");
     return ESP_OK;
 }

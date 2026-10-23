@@ -34,10 +34,6 @@ button.ghost{background:#e8f0fe;color:var(--blue);border:0;border-radius:10px;pa
 button.danger{background:#fce8e6;color:#c5221f;border:0;border-radius:10px;padding:11px 16px;font-size:14px}
 input,select,textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:15px;background:#fff;font-family:inherit}
 label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
-/* The browser's default range accent is Material indigo (reads as purple on
- * Android Chrome); pin it to black so the sliders match the monochrome device
- * UI instead of looking like a leftover default. */
-input[type=range]{padding:0;border:0;background:transparent;accent-color:#000;height:32px}
 .row2{display:flex;gap:10px}.row2>*{flex:1}
 .days{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .days label{display:flex;align-items:center;gap:4px;font-size:13px;color:var(--text);margin:0;border:1px solid var(--line);padding:6px 9px;border-radius:8px}
@@ -172,6 +168,11 @@ td.cell.future i{opacity:.35}
       <div class="hint" style="margin-top:8px">切换后设备会把文件搬到新位置并自动重启，约 3 秒。</div>
       <div style="margin-top:12px"><button class="primary" onclick="saveStorage()">保存存储位置</button></div>
     </div>
+    <div class="card"><h2>网页映射（WebDAV）</h2>
+      <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="webdav" style="width:20px;height:20px"> 允许把 SD 卡映射成网络驱动器</label>
+      <div class="hint" style="margin-top:8px">默认关闭。开启后电脑可以「映射网络驱动器」到 http://设备IP/，代价是同一网段的人都能读写 SD 卡；不开也能用本网页管理文件。</div>
+      <div style="margin-top:12px"><button class="primary" onclick="saveWebdav()">保存</button></div>
+    </div>
     <div class="card"><h2>状态</h2><div id="sysinfo" class="hint"></div></div>
   </section>
 </main>
@@ -274,10 +275,16 @@ function saveSleep(){
   api("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
     .then(()=>{toast("休眠设置已保存");loadConfig()}).catch(e=>toast("失败："+e.message));
 }
+function saveWebdav(){
+  const on=!!$("#webdav").checked;
+  api("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({webdav:on})})
+    .then(()=>{toast(on?"网页映射已开启":"网页映射已关闭");loadConfig()}).catch(e=>toast("失败："+e.message));
+}
 function saveStorage(){
   const on=$("#cache_sd").value==="1";
   api("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cache_sd:on})})
-    .then(()=>toast("正在迁移数据，设备即将重启")).catch(e=>toast("失败："+e.message));
+    .then(()=>{toast("正在迁移数据，设备即将重启");setTimeout(()=>waitBack(),4000)})
+    .catch(e=>toast("失败："+e.message));
 }
 function loadAlarms(){
   return api("/api/alarms").then(d=>{
@@ -547,7 +554,12 @@ function upload(input){
     .then(r=>{if(!r.ok&&r.status!==201&&r.status!==204)throw new Error("HTTP "+r.status)}))});
   chain.then(()=>{toast("上传完成");loadFiles()}).catch(e=>toast("上传失败："+e.message));
 }
-function loadConfig(){
+/* The device reboots after a few settings changes (storage location in
+ * particular), and the page is often reopened a second before it is back. A
+ * single failed fetch used to leave the storage picker showing its HTML
+ * default, i.e. "device internal", which reads like the setting was lost. */
+function loadConfig(tries){
+  if(tries===undefined)tries=4;
   api("/api/config").then(c=>{
     cfg=c;
     $("#ai_base").value=c.ai_base;$("#ai_model").value=c.ai_model;$("#ai_persona").value=c.ai_persona;
@@ -557,9 +569,19 @@ function loadConfig(){
     $("#font_size").value=c.font_size;$("#tz").value=c.tz;
     $("#focus_dark").checked=!!c.focus_dark;
     $("#cache_sd").value=c.cache_sd?"1":"0";
+  if($("#webdav"))$("#webdav").checked=!!c.webdav;
     $("#auto_sleep").checked=!!c.auto_sleep;$("#sleep_min").value=String(c.sleep_min||5);
     fillFocusCd();
-  }).catch(e=>toast("读取设置失败"));
+  }).catch(e=>{
+    if(tries>0){setTimeout(()=>loadConfig(tries-1),1500);}
+    else toast("读取设置失败，设备可能正在重启");
+  });
+}
+/* Poll until the device answers again, then refresh whatever the page shows. */
+function waitBack(tries){
+  if(tries===undefined)tries=15;
+  api("/api/status").then(()=>{toast("设备已重启");loadConfig();loadStatus()})
+    .catch(()=>{if(tries>0)setTimeout(()=>waitBack(tries-1),2000);else toast("设备没有回来，请手动刷新")});
 }
 $("#brightness").oninput=e=>$("#bri-v").textContent=e.target.value;
 $("#line_space").oninput=e=>$("#ls-v").textContent=e.target.value;

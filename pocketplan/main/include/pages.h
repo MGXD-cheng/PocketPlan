@@ -21,6 +21,8 @@ void pp_ai_refresh(void);
 
 void pp_settings_create(lv_obj_t *parent);
 void pp_settings_refresh(void);
+/* Tour hook: scroll the WebDAV switch into view so a capture can show it. */
+void pp_settings_demo_webdav(void);
 
 /* Full-screen reader overlay. */
 void pp_reader_ui_init(void);

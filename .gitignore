@@ -39,9 +39,7 @@ pocketplan/pp-nvs.csv
 pocketplan/miss.txt
 pocketplan/misslines.txt
 pocketplan/main/www/_check.js
-pocketplan/n4*.png
-pocketplan/n3*.png
-pocketplan/n2*.png
+pocketplan/n[0-9]*.png
 
 # ---- earlier Arduino experiments: 55 MB of CLI, not part of this project ----
 tools/arduino-cli.exe

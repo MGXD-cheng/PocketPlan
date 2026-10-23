@@ -46,6 +46,8 @@ static lv_obj_t *s_line_space;
 static lv_obj_t *s_version;
 static lv_obj_t *s_dark_chip;
 static lv_obj_t *s_cache_chip;
+static lv_obj_t *s_webdav_chip;
+static lv_obj_t *s_webdav_row;
 static lv_obj_t *s_sleep_chip;
 static lv_obj_t *s_sleep_min_chip;
 
@@ -70,11 +72,15 @@ static void style_slider(lv_obj_t *s)
     lv_obj_set_style_bg_opa(s, LV_OPA_COVER, LV_PART_INDICATOR);
     lv_obj_set_style_radius(s, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
 
-    lv_obj_set_style_bg_color(s, lv_color_hex(C_CHIP), LV_PART_KNOB);
+    /* The knob is the one part that has to be unmistakable: a white disc with
+     * a thick black ring stands out on both the black filled part and the white
+     * empty part, where a solid black knob simply merged into the bar. */
+    lv_obj_set_style_bg_color(s, lv_color_hex(0xFFFFFF), LV_PART_KNOB);
     lv_obj_set_style_bg_opa(s, LV_OPA_COVER, LV_PART_KNOB);
-    lv_obj_set_style_border_width(s, 0, LV_PART_KNOB);
+    lv_obj_set_style_border_color(s, lv_color_hex(C_EDGE), LV_PART_KNOB);
+    lv_obj_set_style_border_width(s, 3, LV_PART_KNOB);
     lv_obj_set_style_shadow_width(s, 0, LV_PART_KNOB);
-    lv_obj_set_style_pad_all(s, 9, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(s, 11, LV_PART_KNOB);
 }
 
 static lv_obj_t *add_section(const char *title)
@@ -293,6 +299,17 @@ static void cache_task(void *arg)
     vTaskDelete(NULL);
 }
 
+static void webdav_clicked(lv_event_t *e)
+{
+    (void)e;
+    pp_config_t *cfg = pp_config();
+    cfg->webdav = !cfg->webdav;
+    pp_config_save();
+    chip_set(s_webdav_chip, cfg->webdav ? "开" : "关", cfg->webdav);
+    pp_ui_toast(cfg->webdav ? "网页映射已开启，可在电脑上映射网络驱动器"
+                            : "网页映射已关闭");
+}
+
 static void cache_clicked(lv_event_t *e)
 {
     (void)e;
@@ -354,6 +371,30 @@ static void refresh_values(void)
     lv_label_set_text(s_ai_state, cfg->ai_key[0] ? "已配置" : "未配置（网页端填写）");
 }
 
+void pp_settings_demo_webdav(void)
+{
+    if (s_root == NULL || s_webdav_row == NULL) {
+        return;
+    }
+    lvgl_port_lock(0);
+    /* The settings page is taller than the screen and the tabs are not
+     * scrollable while a tour runs (no finger), so scrolling to the row proved
+     * unreliable: hide the cards above it instead, which brings the network
+     * section to the top without touching the widget tree underneath. */
+    lv_obj_t *card = lv_obj_get_parent(s_webdav_row);
+    uint32_t n = lv_obj_get_child_count(s_root);
+    for (uint32_t i = 0; i < n; i++) {
+        lv_obj_t *c = lv_obj_get_child(s_root, i);
+        if (c == card) {
+            break;
+        }
+        lv_obj_add_flag(c, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_update_layout(s_root);
+    lv_obj_scroll_to_y(s_root, 0, LV_ANIM_OFF);
+    lvgl_port_unlock();
+}
+
 void pp_settings_refresh(void)
 {
     if (s_root == NULL) {
@@ -367,6 +408,7 @@ void pp_settings_refresh(void)
     font_mark(cfg->font_size);
     chip_set(s_dark_chip, cfg->focus_dark ? "暗色" : "亮色", cfg->focus_dark);
     chip_set(s_cache_chip, cfg->cache_sd ? "开" : "关", cfg->cache_sd);
+    chip_set(s_webdav_chip, cfg->webdav ? "开" : "关", cfg->webdav);
     chip_set(s_sleep_chip, cfg->auto_sleep ? "开" : "关", cfg->auto_sleep);
     sleep_min_mark();
     lvgl_port_unlock();
@@ -535,8 +577,27 @@ void pp_settings_create(lv_obj_t *parent)
     s_net_ssid = add_row(card, "WiFi");
     s_net_ip = add_row(card, "IP");
     s_net_ap = add_row(card, "热点");
+
+    row = lv_obj_create(card);
+    lv_obj_set_width(row, lv_pct(100));
+    lv_obj_set_height(row, 48);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_set_style_pad_column(row, 10, 0);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *wl = lv_label_create(row);
+    lv_label_set_text(wl, "网页映射");
+    lv_obj_set_style_text_color(wl, lv_color_hex(C_TEXT), 0);
+    s_webdav_chip = make_chip(row, "关", webdav_clicked, NULL);
+    lv_obj_set_width(s_webdav_chip, 80);
+    s_webdav_row = row;
+
     lv_obj_t *hint = lv_label_create(card);
-    lv_label_set_text(hint, "长按 BOOT 键 3 秒可清除 WiFi 并重启");
+    lv_label_set_text(hint, "网页映射（WebDAV）默认关闭：开启后可在电脑上把 SD 卡映射成网络驱动器；长按 BOOT 键 3 秒可清除 WiFi 并重启");
     lv_obj_set_style_text_color(hint, lv_color_hex(C_DIM), 0);
     lv_obj_set_width(hint, lv_pct(100));
     lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);

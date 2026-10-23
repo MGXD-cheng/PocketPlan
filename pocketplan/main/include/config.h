@@ -25,6 +25,8 @@ typedef struct {
     char focus_cd[12];    /* countdown id shown in focus mode, "" = none */
     /* storage */
     bool cache_sd;        /* keep plans/countdowns/alarms/AI chat on the SD card */
+    /* network */
+    bool webdav;          /* expose the card over WebDAV; off by default */
     /* power */
     bool auto_sleep;      /* switch the backlight off when nobody touches it */
     uint8_t sleep_min;    /* idle minutes before that happens, 1..60 */

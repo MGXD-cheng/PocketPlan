@@ -31,6 +31,7 @@ static void set_defaults(pp_config_t *c)
     c->focus_dark = false;
     c->focus_cd[0] = '\0';
     c->cache_sd = false;
+    c->webdav = false;
     c->auto_sleep = true;
     c->sleep_min = 5;
 }
@@ -95,6 +96,10 @@ esp_err_t pp_config_load(void)
     if (cJSON_IsBool(cs)) {
         s_cfg.cache_sd = cJSON_IsTrue(cs);
     }
+    const cJSON *wd = cJSON_GetObjectItemCaseSensitive(root, "webdav");
+    if (cJSON_IsBool(wd)) {
+        s_cfg.webdav = cJSON_IsTrue(wd);
+    }
     const cJSON *as = cJSON_GetObjectItemCaseSensitive(root, "auto_sleep");
     if (cJSON_IsBool(as)) {
         s_cfg.auto_sleep = cJSON_IsTrue(as);
@@ -105,8 +110,12 @@ esp_err_t pp_config_load(void)
         s_cfg.sleep_min = (uint8_t)(v < 1 ? 1 : (v > 60 ? 60 : v));
     }
     cJSON_Delete(root);
-    ESP_LOGI(TAG, "loaded config (ai model %s, key %s)", s_cfg.ai_model,
-             s_cfg.ai_key[0] ? "set" : "unset");
+    /* cache_sd is printed because "the storage location resets after a reboot"
+     * is the one report that can only be settled from the log: it shows what
+     * was actually read out of config.json, before any page redraw. */
+    ESP_LOGI(TAG, "loaded config (ai model %s, key %s, cache_sd %d, webdav %d)",
+             s_cfg.ai_model, s_cfg.ai_key[0] ? "set" : "unset", (int)s_cfg.cache_sd,
+             (int)s_cfg.webdav);
     return ESP_OK;
 }
 
@@ -128,6 +137,7 @@ esp_err_t pp_config_save(void)
     cJSON_AddBoolToObject(root, "focus_dark", s_cfg.focus_dark);
     cJSON_AddStringToObject(root, "focus_cd", s_cfg.focus_cd);
     cJSON_AddBoolToObject(root, "cache_sd", s_cfg.cache_sd);
+    cJSON_AddBoolToObject(root, "webdav", s_cfg.webdav);
     cJSON_AddBoolToObject(root, "auto_sleep", s_cfg.auto_sleep);
     cJSON_AddNumberToObject(root, "sleep_min", s_cfg.sleep_min);
 
@@ -136,6 +146,8 @@ esp_err_t pp_config_save(void)
     if (text == NULL) {
         return ESP_ERR_NO_MEM;
     }
+    ESP_LOGI(TAG, "saving config (cache_sd %d, webdav %d)", (int)s_cfg.cache_sd,
+             (int)s_cfg.webdav);
     esp_err_t err = pp_store_write_atomic(PP_CONF_PATH, text, strlen(text));
     cJSON_free(text);
     if (err != ESP_OK) {

@@ -1,6 +1,6 @@
 # PocketPlan 项目进度报告
 
-> 生成时间：2026-10-24 03:4x（本地，M14.2 滑块纯黑 + README 图库；此前 M14 自动休眠 + 开源发布，M13.1 把时钟模式改成横屏）
+> 生成时间：2026-10-24 04:2x（本地，M14.3 滑块手柄与键盘轮廓 + M14.4 网页映射开关/网页设置页重试；此前 M14 自动休眠 + 开源发布，M13.1 把时钟模式改成横屏）
 > 设备：Waveshare **ESP32-S3-Touch-LCD-2.8B**（2.8" 480×640 RGB 屏 + GT911 触摸 + 8MB PSRAM + 16MB Flash）
 > 代码位置：`D:\Users\PC\Desktop\esp32-mgxd\pocketplan\`
 > 设计文档：`D:\Users\PC\Desktop\esp32-mgxd\PLAN-BOARD-DESIGN.md`（v0.2）
@@ -90,6 +90,8 @@ BOOT 按键                GPIO0（长按可清除 WiFi 凭据）
 [x] M14 自动休眠（无操作 N 分钟关背光，轻触唤醒；闹钟响铃与时钟模式期间不熄屏；设置页 chip + 网页下拉）
 [x] M14.1 开源发布（README / MIT LICENSE / .gitignore；github.com/MGXD-cheng/PocketPlan）
 [x] M14.2 滑块纯黑（设备端显式样式 + 网页 `accent-color:#000`）与 README 图库补齐
+[x] M14.3 滑块手柄可见（白圆 + 黑环，原来黑钮融进黑轨道）+ AI 键盘按键描边与 20px 字号；网页滑块按要求恢复浏览器默认外观
+[x] M14.4 网页映射（WebDAV）设置开关，默认关；网页端设备重启后设置页自动重试，不再把「数据存 SD 卡」显示成默认的「设备内部存储」
 ```
 
 ### 3.1 已实测通过的清单（M1 + M3–M9，2026-10-23 22:1x）
@@ -277,7 +279,7 @@ BOOT 按键                GPIO0（长按可清除 WiFi 凭据）
 | 项 | 内容 |
 |---|---|
 | 仓库 | <https://github.com/MGXD-cheng/PocketPlan>（public，MIT） |
-| 入库内容 | 102 个文件：`pocketplan/` 全部源码 + 4 个字体 `.c` + `sdkconfig`/`sdkconfig.defaults`/`partitions.csv`/`dependencies.lock`、19 张真机截图、`tools/` 里的构建/烧录/串口脚本、`.fontgen/` 字体生成脚本、三份报告 + 设计文档、README 与 LICENSE |
+| 入库内容 | 102 个文件：`pocketplan/` 全部源码 + 4 个字体 `.c` + `sdkconfig`/`sdkconfig.defaults`/`partitions.csv`/`dependencies.lock`、截图、`tools/` 里的构建/烧录/串口脚本、`.fontgen/` 字体生成脚本、三份报告 + 设计文档、README 与 LICENSE |
 | 刻意不入库 | `pocketplan/build`（约 234MB）、`pocketplan/managed_components`（184MB）、`*.bin/*.elf/*.map`、所有串口日志与临时截图、早期实验目录（`case/ demo/ idf/ i2cscan/ ref/ ref2/ sdtest/ xz/`）、早期下载的 `tools/arduino-cli.exe`/`.zip`（55MB，与本项目无关） |
 | README | 中文：一句话简介 + 4 张主图 + 9 张图库表 + 功能表 12 行 + 硬件表（含引脚归属）+ 编译/烧录/首次使用 + 目录结构 + REST API 表 + 已知限制 + 许可与致谢 |
 | 许可证 | MIT（`Copyright (c) 2026 PocketPlan contributors`），第三方组件（ESP-IDF / LVGL / esp_lvgl_port / cJSON / esp_lcd 驱动）各自遵循原许可 |
@@ -300,6 +302,54 @@ BOOT 按键                GPIO0（长按可清除 WiFi 凭据）
 
 ---
 
+### 3.10 M14.3 滑块手柄可见 + 键盘按键描边（2026-10-24 04:0x，本轮新增）
+
+M14.2 把滑块改成纯黑之后暴露了一个新问题：**黑色的圆钮落在黑色的填充段上，等于没有钮**，看起来像一根不能拖的实心条。这一轮连同 AI 页键盘一起修。
+
+| 位置 | 改动 | 为什么 |
+|---|---|---|
+| 设备端滑块 | `pocketplan/main/page_settings.c` 的 `style_slider()` 里 KNOB 改成白底 + 3px 黑描边 + `pad_all 11`：`lv_obj_set_style_bg_color(s, lv_color_hex(0xFFFFFF), LV_PART_KNOB)`、`border_color 0x000000`、`border_width 3` | 白圆黑环落在黑轨道上是实心对比，落在白轨道上也有黑环，两头都看得见 |
+| AI 键盘 | `pocketplan/main/page_ai.c` 新增 `style_keyboard()`：`LV_PART_ITEMS` 白底 + 1px 黑描边 + radius 6 + `&pp_font_20` + `pad 2`；`LV_STATE_PRESSED` 与 `LV_STATE_CHECKED` 反色（黑底白字） | 主题给按键的白底浅灰边框在 1bpp 屏上等于没有，符号键（`1#`/`ABC`/`⌫`/`⏎`/`←`/`→`/`✓`）像浮在页面上的散点 |
+| AI 页「清空」 | 从 `bg 0xE4E4E4` 改成白底 + 1px 黑描边 | 同上的灰等于白问题 |
+| 网页滑块 | 删掉 M14.2 加的 `input[type=range]{...accent-color:#000...}`，恢复浏览器默认外观 | 用户明确要求「网页端的滑块改回原样」 |
+
+一个绕不开的限制：LVGL 的 `lv_buttonmatrix` **按键不是独立对象**，`LV_BUTTONMATRIX_CTRL_CUSTOM_1` 在 v9 里并没有映射成 `LV_STATE_USER_x`，所以没法逐键设样式，只能整体给 `LV_PART_ITEMS` 上样式、再用 `CHECKED/PRESSED` 做反色。
+
+### 3.11 M14.4 网页映射开关（默认关）+ 网页端设置页重试（2026-10-24 04:1x，本轮新增）
+
+两条需求：
+
+> 网页端映射可以在设置中开关，默认为关
+> 每次重启，数据存储位置都会改回设备内部存储
+
+**第一条（WebDAV 开关）**：
+
+| 层 | 实现 |
+|---|---|
+| 配置 | `pocketplan/main/include/config.h` 的 `pp_config_t` 加 `bool webdav;`（默认 `false`），`config.c` 的 load/save 各加一行（`cJSON_AddBoolToObject`） |
+| 固件 | `pocketplan/main/webdav.c` 加 `dav_enabled()` 与 `dav_deny()`：十个 handler（OPTIONS/PROPFIND/GET/HEAD/PUT/DELETE/MKCOL/MOVE/PROPPATCH/LOCK）第一行 `if (!dav_enabled()) return dav_deny(req);`，即**照常注册、按请求返回 404「WebDAV is disabled」**。原因是 URI 处理器表在 `httpd_start()` 时固定，若靠「开关时注册/注销」就得重启 httpd，切换要等重启；按请求判定则开关即时生效 |
+| 设备 UI | 设置页「网络」区块新增一行「网页映射」+ 80 宽 chip（`webdav_clicked()` → `pp_config_save()` → toast）；启动日志变成 `webdav: WebDAV listening on port 80 (disabled)` |
+| 网页 UI | 设置页「网页映射（WebDAV）」卡 + `#webdav` 复选框 + `saveWebdav()`；`/api/config` 的 GET/POST 都带 `webdav` 字段 |
+
+**第二条（重启后存储位置看起来被重置）**：先做取证，不猜。`shot.c` 里加了临时探针 `PP_TOUR_CFG`（默认 0），开成 1 时第一趟开机把 `cache_sd` 置真并迁移，然后 `esp_restart()`；第二趟把结论打出来：
+
+```
+boot1: config: loaded config (... cache_sd 0, webdav 0)
+boot1: config: saving config (cache_sd 1, webdav 0)
+boot1: store: moved 3 data file(s) to /sdcard/.pocketplan
+boot1: ---TOURCFG set=1 mig=ESP_OK data_on_sd=1 sd_file=1 plans=3---
+boot2: config: loaded config (ai model deepseek-chat, key set, cache_sd 1, webdav 0)
+boot2: ---TOURCFG loaded=1 data_on_sd=1 sd_file=1 lfs_file=0 plans=3---
+```
+
+结论：`cache_sd` **确实跨重启保住了**，设备端没有任何回退逻辑。真正的原因是网页端：设备保存设置后会 `esp_restart()`，浏览器在设备还没起来时请求 `/api/config` 失败，`loadConfig()` 的 `.catch` 只弹了个 toast，那个 `<select>` 就停在 HTML 的默认第一项「设备内部存储」——看起来像被改回去了。
+
+修法在 `pocketplan/main/www/index.html`：
+
+- `loadConfig(tries)` 失败自动重试 4 次（每次 1500 ms），仍失败才提示「读取设置失败，设备可能正在重启」；
+- 新增 `waitBack(tries)`：保存「数据存 SD 卡」成功后每 2 秒轮询 `/api/status`，设备回来后自动 `loadConfig()` + `loadStatus()`（最多 15 次）。
+
+---
 ## 四、代码结构
 
 ```
@@ -386,7 +436,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 脚本内部做的事（缺一步就编译失败）：`$env:MSYSTEM=$null` → 设 `IDF_PATH` / `IDF_TOOLS_PATH` / `PYTHONUTF8=1` → `. activate.py --export` → 执行传入的 `-Command`。
 
 - 纯增量 **40–90 秒**；改了 `sdkconfig` 会触发全量重编，**约 15 分钟**
-- 成功标志：`Project build complete.` + `pocketplan.bin binary size 0x379220 bytes. 0x76de0 bytes (12%) free.`（3,641,888 字节，app 分区 0x3f0000 = 4,128,768 字节，剩 486,880 字节）
+- 成功标志：`Project build complete.` + `pocketplan.bin binary size 0x379e50 bytes. 0x761b0 bytes (12%) free.`（3,645,008 字节，app 分区 0x3f0000 = 4,128,768 字节，剩 483,760 字节）
 - 编译**必须后台跑并轮询日志**（前台会超时）；日志是 UTF-16，用 `Select-String` 读，别用 `cat`
 
 ### 5.3 烧录
@@ -615,6 +665,23 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 
 ---
 
+### 6.12 M14.3 / M14.4 真机复测（2026-10-24 04:1x，串口 tour 固件）
+
+`shot.c` 临时 `PP_SCREEN_TOUR=1`（`PP_TOUR_CFG` 保持 0，不碰数据），`pp_serial.ps1 -Port COM5 -Seconds 200` 抓到 960,484 字节日志、18 块截图、20 个 marker，`E (` 计数 0：
+
+| 项 | 结果 |
+|---|---|
+| 滑块手柄 | `05-settings.png` 已换成这一版：行距与亮度两个滑块的钮都是「白圆 + 黑环」，压在中点/58% 的黑色填充上也一眼能看出可拖 |
+| AI 键盘 | `12-ai-keyboard.png` 已换：每个按键都有黑框，`1#`/`ABC`/`⌫`/`⏎`/`←`/`→`/`✓` 全部有轮廓，字母是 20px（原来 16px 挤在一起） |
+| 网页映射（设备侧） | 新截图 `20-settings-network.png`：网络区块里「网页映射」右侧是**关**，下面是说明「网页映射（WebDAV）默认关闭：…长按 BOOT 键 3 秒可清除 WiFi 并重启」；同一张里「数据存 SD 卡」也是**关** |
+| 启动日志 | `I (2604) config: loaded config (ai model deepseek-chat, key set, cache_sd 0, webdav 0)`、`I (4084) webdav: WebDAV listening on port 80 (disabled)` → **默认关**生效，端口仍在监听 |
+| 异步音乐 | 新截图 `21-music-loading.png` 记录了「读取中 0/115」这一帧，说明列表确实是先进页面再分批建行 |
+| 回归 | 20 个 marker 全中：TOURTAB 0..5、TOURMUSICLOAD、TOURMUSIC、TOURDONE、TOURKEYBOARD、TOURALARM、TOURCACHE（跳过）、TOURFOCUS、TOURCLOCK、TOURCLOCKLIGHT、TOURTAPEXIT `active=0`、TOURREADER、TOURREADER20、TOURSETSETTINGS、**TOURWEBDABUI**、TOURSLEEP `asleep=1 duty=0`、TOURWAKE `asleep=0 duty=562`、TOURWEBDAB `default=0 port80=1`、TOUREND |
+| 二进制 | tour 版 `0x37a600`；恢复 `PP_SCREEN_TOUR=0` 后正式版 **`0x379e50`（3,645,008 字节，剩 `0x761b0` = 483,760 字节，12%）**，已烧录 `Hash of data verified.` |
+| 正式版启动 | `boot21.txt`：`config: loaded config (… cache_sd 0, webdav 0)`@2.60s、`plans: loaded 3 plans, today 2026-10-24`@2.76s、`alarms: loaded 1 alarms`@2.92s、`webdav: … (disabled)` + `ready`@4.08s、`station got ip 192.168.10.104`@4.62s、`clock: RTC updated from SNTP`@7.31s；`E (` 计数 **0** |
+| 网页端 | `index.html` 的 19,864 字节 JS 过了 `node --check`；`grep accent-color` = 0（滑块已复原）；`waitBack` 出现 3 次；`#webdav` 的读取/保存/回填三处齐全。**HTTP 端到端这轮仍没做**：设备又落到 mesh 的 `192.168.10.104`，PC `192.168.0.105` 不在同一段，`curl` 两个地址都空响应 |
+
+---
 ## 七、踩过的坑与修法（都已在代码里修好，留作备忘）
 
 | # | 现象 | 根因 | 修法 |
@@ -667,6 +734,11 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 | 46 | `git push` 到 github.com 一直 `Failed to connect ... after 21132 ms`，但 `curl https://api.github.com` 正常 | 这个网络到 `github.com` 的 A 记录（`20.205.243.166`）被丢包，而 `20.205.243.168`（api）、`20.205.243.165`（codeload）、`140.82.112.3` 都通 —— 换 IP 用 `curl --resolve` 立刻 200 | 用 GitHub **Git Data API** 发布：blobs → tree → commit → `PATCH /git/refs/heads/main`（force），102 个文件 15.6MB，一次成功；`git` 本身仍保留本地提交，待网络正常时再对齐 |
 | 47 | 本地 `git add -A` 把 55MB 的 `tools/arduino-cli.exe/.zip`、16 张临时截图、`_check.js` 也加进了索引 | 工作区是「项目 + 一堆早期实验」混住的，`.gitignore` 只写了实验目录名 | `git rm --cached` 剔除 + `.gitignore` 补 `tools/arduino-cli.*`、`pocketplan/n[2-4]*.png`、`pocketplan/main/www/_check.js`，再 `commit --amend`；入库前一定先 `git ls-files | wc -l` 和 `git ls-tree -r -l | sort -k4 -nr | head` 看一眼 |
 | 48 | 用户说「设置页的滑块条是紫色的」，但设备截图里滑块明明是黑的 | 两个原因叠在一起：① 设备截图是 `shot.c` 的 **1bpp PBM**，只按灰度阈值判墨，**颜色在截图里不存在**，所以截图既证明不了黑也证明不了紫；② 真正紫的是**网页端** `input[type=range]`，浏览器对未指定 `accent-color` 的 range 用的是 Material 默认靛紫 | 先用 `lv_obj_get_style_bg_color(LV_PART_INDICATOR/KNOB)` 把 LVGL 解析后的值打出来（`ind=#ff000000 knob=#ff000000` → 设备端本来就是黑），再改网页 `input[type=range]{accent-color:#000}`；设备端仍显式钉死三个 part 作为保险。**教训：截图不能用来判断颜色，要读样式值或背景色寄存器** |
+| 49 | 滑块改成纯黑之后「看不出哪里可以拖」 | 黑圆钮 `bg 0x000000` 压在黑色填充段 `INDICATOR` 上，两者同色，钮彻底消失 | KNOB 改白底 + 3px 黑描边 + `pad_all 11`：黑轨道上有白圆、白轨道上有黑环，两头都有形 |
+| 50 | 想给 LVGL 键盘的某个键（比如 `⏎`）单独加粗边框，找不到入口 | `lv_buttonmatrix` 的键**不是独立对象**，`LV_BUTTONMATRIX_CTRL_CUSTOM_1` 在 v9 里没有映射成 `LV_STATE_USER_x`，没有可寻址的 per-key 状态 | 整块 `LV_PART_ITEMS` 统一白底 + 1px 黑描边 + `&pp_font_20`，`LV_STATE_PRESSED`/`LV_STATE_CHECKED` 反色；接受「不能逐键微调」 |
+| 51 | tour 里 `lv_obj_scroll_to_view(s_webdav_row, LV_ANIM_OFF)` 截图没滚动 | 设置页比一屏高，但 tab 容器在无触摸的 tour 里不滚；`scroll_to_view` 依赖滚动祖先，实测无效且不报错 | 截图专用：把「网络」卡片之上的卡片全部 `LV_OBJ_FLAG_HIDDEN`，再 `lv_obj_update_layout()` + `scroll_to_y(0)`，网络区块自然顶到上方（函数 `pp_settings_demo_webdav()`，只被 tour 调用） |
+| 52 | 用户反馈「每次重启，数据存储位置都变回设备内部存储」 | 设备端其实没回退：探针证明 `cache_sd` 跨重启是 1（`TOURCFG loaded=1 data_on_sd=1`）。是**网页端**在设备重启窗口里 `/api/config` 失败，`<select>` 停在 HTML 默认第一项 | `loadConfig()` 自动重试 4×1.5s；`saveStorage()` 成功后 `waitBack()` 每 2s 轮询 `/api/status`，设备回来再拉配置，不再显示成「设备内部存储」 |
+| 53 | WebDAV 想「关了就不能用」，但 handler 只能在 `httpd_start()` 前注册 | 靠注销/重注册实现开关要重启 httpd（连同 Web 页面一起断），切换要等重启 | 保持注册、请求时判定：十个 handler 首行 `if (!dav_enabled()) return dav_deny(req);`（404 + 「WebDAV is disabled」），开关即时生效、零重启 |
 
 ---
 
@@ -680,7 +752,7 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 - `W (2048) gpio: conflict found for GPIO[16]` —— TP_INT 被复位代码与触摸驱动各配置一次，无害，待清理
 - **字体只有 16px / 20px 两档点阵**，没有中间字号：15px、18px 这类需求要么放大要么缩小；1bpp 也没有反锯齿，斜笔画在极小字号下会比矢量字体硬
 - 字体源文件 `.c` 合计 ~14.7MB，全量重编时编译器要多花几十秒；增量构建不受影响
-- 固件已到 **3.64MB / app 分区 3.94MB（0x379220 = 3,641,888 字节，剩 12%，0x76de0 = 486,880 字节）**，再加功能（OTA、更多字体档位、MP3 解码）前必须先瘦身（例如裁掉 0x4E00-0x9FA5 里用不到的字，或把 20px 改成按需生成）
+- 固件已到 **3.65MB / app 分区 3.94MB（0x379e50 = 3,645,008 字节，剩 12%，0x761b0 = 483,760 字节）**，再加功能（OTA、更多字体档位、MP3 解码）前必须先瘦身（例如裁掉 0x4E00-0x9FA5 里用不到的字，或把 20px 改成按需生成）
 - Windows 映射网络驱动器连 HTTP WebDAV 需要开 WebClient 服务；**尚未在真资源管理器里实测**（curl 层面全通）
 - 倒数日在**设备端只读**：屏幕没有中文输入法，增删改只能在网页端做（这是故意的取舍，不是没做完）
 - 专注模式目前只是「横屏时钟 + 已专注计时」：没有番茄钟倒计时/提醒、没有白噪音、不统计历史专注时长，退出即清零
@@ -700,6 +772,9 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 - **熄屏没有锁**：一碰就亮，没有 PIN/图案锁。设备和「关机」的区别就是屏幕黑不黑
 - **响铃与时钟模式不熄屏**是有意的例外：闹钟响时必须看得见，时钟模式本来就是当台钟用；代价是响铃 60 秒内屏幕一直亮着
 - 休眠时长只有 1/3/5/10/30 五档（屏幕 chip 循环切换，网页是下拉），没有「不熄屏」以外的自定义值；30 分钟以上只能再进网页设置（上限 60）
+- **网页映射（WebDAV）默认是关的**：没有认证、没有只读模式，开了就等于同网段谁都能读写 TF 卡；开关在设备设置页「网络」区块和网页「设置 → 网页映射」两处，关掉后 WebDAV 的十个方法统一返回 404「WebDAV is disabled」（端口仍在监听，HTTP Web 页面不受影响）
+- **网页端的滑块回到了浏览器默认外观**（用户要求「改回原样」）：设备端是纯黑+白钮黑环，网页端在 Chrome/Android 上又会是那条靛紫；两边观感不一致是刻意的取舍
+- **设备重启后的 5–10 秒内网页读不到设置**：`loadConfig()` 重试 4×1.5s、`waitBack()` 轮询 15×2s 覆盖了这次重启窗口，但超过 30 秒还没起来（比如卡格式化）仍会显示「读取设置失败」
 - **GitHub 仓库的首个 commit 是走 API 建的**（见 §3.8）：本地 `git` 的 commit sha 与远端不同，在这台机器上 `git push` 也不通（`github.com:443` 被丢包），要同步得先换网络或继续用 API
 
 ---
@@ -718,6 +793,7 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 8. 可选（M13 遗留）：音乐列表超过 200 首改虚拟列表；时钟模式超过 4 条倒数日改翻页/滚动
 9. **开源后续**（M14.1 刚起步）：给仓库加 Issue 模板 / Release（附 `pocketplan.bin` 与烧录说明）/ 一张实物照片进 README；`tools/pp_build.ps1` 里写死的 `IDF_PATH=D:\esp\esp-idf-v6.1` 改成参数或环境变量
 10. 可选（M14 遗留）：自动休眠加「只在电池供电时休眠」与 light sleep 档位；时钟模式加「熄屏但保留画面」（面板 standby）
+11. 可选（M14.4 遗留）：WebDAV 加只读模式与 Basic 认证（现在默认关就是因为它毫无保护）
 
 ---
 
@@ -737,7 +813,7 @@ tour 固件（`shot.c` 临时 `PP_SCREEN_TOUR=1`）抓了 16 块 1bpp 截图，�
 | `D:\Users\PC\Desktop\esp32-mgxd\.gitignore` | 排除 build/、managed_components/、二进制、日志、早期实验目录 |
 | <https://github.com/MGXD-cheng/PocketPlan> | 开源仓库（M14.1 发布，102 个文件） |
 | `D:\Users\PC\Desktop\esp32-mgxd\pocketplan\main\clockmode.c` | 时钟模式：横屏全屏，只有时间 + 日期 + 下一个闹钟 + 前 4 条倒数日；轻触 3 下退出（M13 新增，M13.1 改横屏） |
-| `D:\Users\PC\Desktop\esp32-mgxd\pocketplan\docs\screenshots\` | 19 张真机截图（01–19；M14 用带「自动休眠 开/每 5 分」的新图替换了 05-settings.png） |
+| `D:\Users\PC\Desktop\esp32-mgxd\pocketplan\docs\screenshots\` | 21 张真机截图（01–21；M14.3 用新图替换了 01/05/12，并新增 20-settings-network.png「网页映射 关」与 21-music-loading.png「读取中 0/115」） |
 | `D:\Users\PC\Desktop\esp32-mgxd\tools\pp_build.ps1` | 编译封装（处理 MSYSTEM、激活 IDF、跑 idf.py） |
 | `D:\Users\PC\Desktop\esp32-mgxd\tools\pp_flash.ps1` | 烧录封装（分区表 0x8000 + app 0x20000） |
 | `D:\Users\PC\Desktop\esp32-mgxd\tools\pp_serial.ps1` | 串口日志（`-NoReset` 只看输出） |

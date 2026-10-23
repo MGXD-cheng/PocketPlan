@@ -462,6 +462,7 @@ static esp_err_t h_config_get(httpd_req_t *req)
     cJSON_AddBoolToObject(root, "focus_dark", cfg->focus_dark);
     cJSON_AddStringToObject(root, "focus_cd", cfg->focus_cd);
     cJSON_AddBoolToObject(root, "cache_sd", cfg->cache_sd);
+    cJSON_AddBoolToObject(root, "webdav", cfg->webdav);
     cJSON_AddBoolToObject(root, "auto_sleep", cfg->auto_sleep);
     cJSON_AddNumberToObject(root, "sleep_min", cfg->sleep_min);
     cJSON_AddBoolToObject(root, "data_on_sd", pp_data_on_sd());
@@ -514,6 +515,10 @@ static esp_err_t h_config_post(httpd_req_t *req)
     const cJSON *fcd = cJSON_GetObjectItemCaseSensitive(body, "focus_cd");
     if (cJSON_IsString(fcd)) {
         snprintf(cfg->focus_cd, sizeof(cfg->focus_cd), "%s", fcd->valuestring);
+    }
+    const cJSON *wd = cJSON_GetObjectItemCaseSensitive(body, "webdav");
+    if (cJSON_IsBool(wd)) {
+        cfg->webdav = cJSON_IsTrue(wd);
     }
     bool wake = false;
     const cJSON *asleep = cJSON_GetObjectItemCaseSensitive(body, "auto_sleep");

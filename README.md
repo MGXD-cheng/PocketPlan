@@ -24,10 +24,10 @@
 | 时钟模式 | 横屏全屏：时间、日期、下一个闹钟、倒数日，轻触 3 下退出 |
 | 自动休眠 | 无操作 N 分钟自动关背光，轻触唤醒；闹钟响铃和时钟模式期间不熄屏 |
 | 网页端 | 设备自带单页应用（内嵌在固件里，约 34 KB）：计划、打卡、倒数日、闹钟、文件上传、AI、设置 |
-| WebDAV | 同一个 80 端口上提供 WebDAV，Windows 资源管理器 / macOS Finder 可以直接挂载读写 TF 卡 |
+| WebDAV | 同一个 80 端口上提供 WebDAV，Windows 资源管理器 / macOS Finder 可以直接挂载读写 TF 卡；**默认关闭**，在设备设置页「网络 → 网页映射」或网页「设置」里打开（没有认证，同网段谁都能读写，所以默认不开） |
 | 配网 | 首次开机是热点 `PocketPlan-XXXX`（密码 `pocketplan`），网页里填 SSID/密码即可连家里的网；长按 BOOT 3 秒清除凭据 |
 
-界面截图都在 [`pocketplan/docs/screenshots`](pocketplan/docs/screenshots)（01–19），下面是其中 9 张真机照片：
+界面截图都在 [`pocketplan/docs/screenshots`](pocketplan/docs/screenshots)（01–21），下面是其中 12 张真机照片：
 
 | 计划打卡 | 阅读器 | 倒数日 + 闹钟 |
 |---|---|---|
@@ -36,6 +36,8 @@
 | ![音乐](pocketplan/docs/screenshots/16-music-library.png) | ![AI](pocketplan/docs/screenshots/12-ai-keyboard.png) | ![设置](pocketplan/docs/screenshots/17-settings-modes.png) |
 | **时钟模式（暗）** | **闹钟响铃** | **专注模式** |
 | ![时钟模式](pocketplan/docs/screenshots/18-clock-mode-landscape-dark.png) | ![闹钟](pocketplan/docs/screenshots/13-alarm-ring.png) | ![专注](pocketplan/docs/screenshots/09-focus-landscape.png) |
+| **网页映射开关（默认关）** | **音乐异步加载** | **设置页滑块** |
+| ![网络](pocketplan/docs/screenshots/20-settings-network.png) | ![读取中](pocketplan/docs/screenshots/21-music-loading.png) | ![设置](pocketplan/docs/screenshots/05-settings.png) |
 
 ## 硬件
 
@@ -153,4 +155,4 @@ MIT，见 [LICENSE](LICENSE)。第三方组件（ESP-IDF、LVGL、esp_lvgl_port�
 
 - [LVGL](https://lvgl.io/) 与 [esp_lvgl_port](https://github.com/espressif/esp-bsp)
 - Waveshare 的 ESP32-S3-Touch-LCD-2.8B 原理图与示例
-- 以及这一路上被撞过的每一个坑，都写在 [`PocketPlan-项目进度.md`](PocketPlan-项目进度.md) 的「踩过的坑」一节里（47 条）。
+- 以及这一路上被撞过的每一个坑，都写在 [`PocketPlan-项目进度.md`](PocketPlan-项目进度.md) 的「踩过的坑」一节里（53 条）。

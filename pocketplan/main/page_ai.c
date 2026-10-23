@@ -10,6 +10,7 @@
 #include "freertos/task.h"
 #include "lvgl.h"
 #include "pages.h"
+#include "pp_fonts.h"
 #include "ui.h"
 
 #define C_BG 0xFFFFFF
@@ -245,6 +246,30 @@ void pp_ai_demo_keyboard(void)
     lvgl_port_unlock();
 }
 
+/* Keys used to be bare glyphs on white: the theme's key border is a light grey
+ * that vanishes on this panel, so the symbol keys (1#, ABC, backspace, enter,
+ * arrows, the check mark) looked like loose marks rather than buttons. Frame
+ * every key in black and bump the key font to 20 px so the FontAwesome glyphs
+ * are thick enough to tell apart. */
+static void style_keyboard(lv_obj_t *kb)
+{
+    lv_obj_set_style_bg_color(kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS);
+    lv_obj_set_style_bg_opa(kb, LV_OPA_COVER, LV_PART_ITEMS);
+    lv_obj_set_style_border_color(kb, lv_color_hex(0x000000), LV_PART_ITEMS);
+    lv_obj_set_style_border_width(kb, 1, LV_PART_ITEMS);
+    lv_obj_set_style_radius(kb, 6, LV_PART_ITEMS);
+    lv_obj_set_style_text_color(kb, lv_color_hex(0x000000), LV_PART_ITEMS);
+    lv_obj_set_style_text_font(kb, &pp_font_20, LV_PART_ITEMS);
+    lv_obj_set_style_pad_all(kb, 2, LV_PART_ITEMS);
+
+    /* Pressed and toggled keys invert, so a tap and the active 1#/ABC layout
+     * are visible even in this black and white palette. */
+    lv_obj_set_style_bg_color(kb, lv_color_hex(0x000000), LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_text_color(kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_bg_color(kb, lv_color_hex(0x000000), LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_text_color(kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS | LV_STATE_CHECKED);
+}
+
 static void kb_event(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
@@ -312,7 +337,9 @@ void pp_ai_create(lv_obj_t *parent)
     lv_obj_t *clear = lv_button_create(bar);
     lv_obj_set_size(clear, 72, 36);
     lv_obj_set_style_radius(clear, 10, 0);
-    lv_obj_set_style_bg_color(clear, lv_color_hex(0xE4E4E4), 0);
+    lv_obj_set_style_bg_color(clear, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_width(clear, 1, 0);
+    lv_obj_set_style_border_color(clear, lv_color_hex(0x000000), 0);
     lv_obj_set_style_shadow_width(clear, 0, 0);
     lv_obj_add_event_cb(clear, clear_clicked, LV_EVENT_CLICKED, NULL);
     lv_obj_t *cl = lv_label_create(clear);
@@ -400,6 +427,7 @@ void pp_ai_create(lv_obj_t *parent)
     lv_obj_set_size(s_kb, lv_pct(100), KB_H);
     lv_obj_align(s_kb, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_add_flag(s_kb, LV_OBJ_FLAG_HIDDEN);
+    style_keyboard(s_kb);
     lv_obj_add_event_cb(s_kb, kb_event, LV_EVENT_READY, NULL);
     lv_obj_add_event_cb(s_kb, kb_event, LV_EVENT_CANCEL, NULL);
 

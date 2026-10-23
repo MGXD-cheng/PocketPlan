@@ -200,8 +200,10 @@ M13 里用户报「计划勾选完成的圈圈有白边」，根因不在面板�
 | 旋转 | 每个 label 单独 `lv_obj_set_style_transform_rotation(obj, 900, 0)` + `transform_pivot_x/y = LV_PCT(50)`；900 是顺时针 90°，1bpp 点阵字旋转后依然锐利 |
 | 布局 | **不用 flex 容器**：旋转是绘制期变换，布局期仍按未旋转包围盒测量，`LV_SIZE_CONTENT` + flex 在横屏下容易错位；倒数日改成 4 个固定坐标 label（`v = 292 + i*32`），空行 `LV_OBJ_FLAG_HIDDEN` |
 | 代价 | 每个带 transform 的对象都是一层独立渲染，标签一多就吃 CPU；时钟页总共 7 个 label（时/日/闹钟/4 条倒数），实测每秒刷新无压力 |
-| 截图方向 | 串口/HTTP 取回的是竖屏 480×640 帧缓冲，PC 端要 `PIL.Image.rotate(90, expand=True)` 才是人眼看到的横屏；`docs/screenshots/20/21-*.png` 已经转好 |
+| 截图方向 | 串口/HTTP 取回的是竖屏 480×640 帧缓冲，PC 端要 `PIL.Image.rotate(90, expand=True)` 才是人眼看到的横屏；`docs/screenshots/18-clock-mode-landscape-dark.png`、`19-clock-mode-landscape-light.png` 已经转好 |
 | 验证 | `---TOURCLOCK---` / `---TOURCLOCKLIGHT---` 两块截图内容逐字一致，只是黑白相反；`---TOURTAPEXIT active=0---` 证明「轻触 3 下退出」用真实 `LV_EVENT_CLICKED` 也能关掉 overlay |
+
+> 结论：**要横屏而没有整屏旋转能力时，label 级 transform 是够用的**——前提是页面元素少（十几个以内）、排版不用 flex。真要整页横屏（阅读、表格）还是得回到 §7.2 的整屏矩阵方案。
 
 ### 7.7 背光就是「自动休眠」的全部（2026-10-24 03:3x）
 
@@ -227,11 +229,19 @@ M13 里用户报「计划勾选完成的圈圈有白边」，根因不在面板�
 | 设备端到底什么颜色 | 在 `pocketplan/main/page_settings.c` 的 `style_slider()` 里，覆盖前先读 LVGL 解析后的样式值并打印：`I (47619) settings: slider theme colour before override: ind=#ff000000 knob=#ff000000`（两个滑块各一条）。**本来就是纯黑**，和 `lv_theme_default_init(disp, 0x000000, 0x000000, ...)` 的预期一致 |
 | 截图为什么不可信 | `shot.c` 取屏是 **1bpp PBM**：读 RGB565 后逐像素和阈值比大小，只留「墨/纸」两种结果。**颜色在截图里根本不存在**，紫色也会变成黑，黑色也可能因为亮度略高变成白——所以「截图里是黑的」证明不了屏上是黑的 |
 | 真正的紫色 | **网页端** `input[type=range]`：浏览器对没有 `accent-color` 的 range 使用自己的默认强调色（Chrome / Material 是靛紫 `#6200EE` 一类），于是同一个设置页在手机上就是紫色滑块 |
-| 修法 | 设备端仍显式钉死 MAIN / INDICATOR / KNOB 三个 part（白底 + 2px 黑描边、黑填充、黑圆钮），不再依赖主题；网页端 `input[type=range]{accent-color:#000}`。改完 `05-settings.png` 已更新 |
+| 修法 | 设备端仍显式钉死 MAIN / INDICATOR / KNOB 三个 part（白底 + 2px 黑描边、黑填充、黑圆钮），不再依赖主题；网页端一度加 `input[type=range]{accent-color:#000}`，**M14.4 按用户要求又撤掉、恢复浏览器默认**（见 §7.9 末尾）。改完 `05-settings.png` 已更新 |
 | 教训 | **不要用 1bpp 截图判断颜色**。要判断颜色只有两条路：读 LVGL 的 `lv_obj_get_style_*`（软件侧），或者读面板/背光寄存器（硬件侧）。真要看颜色，用手机拍屏 |
 
+### 7.9 同一类问题的后一半：可交互控件必须自己画出轮廓（2026-10-24 04:1x）
 
+§7.5 讲的是「浅灰等于没有」。这条毛病对**控件**比对文字更致命：用户看不出哪里能点、哪里能拖。设备端两处都中招，两处都不是硬件问题。
 
+| 控件 | 症状 | 原因 | 做法 |
+|---|---|---|---|
+| 设置页两个 `lv_slider` | 滑块只显示成一根实心黑条，看不出钮在哪 | M14.2 把 MAIN/INDICATOR/KNOB 全钉成纯黑后，**黑钮压在黑填充上**，两者同色；主题默认的钮本来也是 primary 色（黑），以前只是靠 INDICATOR 不是纯黑才勉强分得开 | KNOB 改白底 + 3px 黑描边 + `pad_all 11`：黑轨道上看到白圆，白轨道上看到黑环 |
+| AI 页 `lv_keyboard` | 按键只剩字母，符号键（`1#`/`ABC`/`⌫`/`⏎`/`←`/`→`/`✓`）像浮在页面上的散点 | 主题给 buttonmatrix 的按键是白底 + **浅灰**边框，1bpp 屏上边框直接消失 | `LV_PART_ITEMS` 统一白底 + 1px 黑描边 + radius 6 + `&pp_font_20`，`LV_STATE_PRESSED`/`CHECKED` 反色 |
 
-> 结论：**要横屏而没有整屏旋转能力时，label 级 transform 是够用的**——前提是页面元素少（十几个以内）、排版不用 flex。真要整页横屏（阅读、表格）还是得回到 §7.2 的整屏矩阵方案。
+一个硬限制：`lv_buttonmatrix` 的键**不是对象**，v9 里 `LV_BUTTONMATRIX_CTRL_CUSTOM_1` 没有映射到 `LV_STATE_USER_x`，**没法给单个键加样式**，只能整块上样式再靠按下/选中状态反色。想做「回车键更宽更黑」这类细节，得换成每个键一个 `lv_button` 自己排。
+
+> 补充（同日）：网页端那条 `accent-color:#000` 随后按用户要求撤回——「网页端的滑块改回原样」。所以现在**设备端是纯黑 + 白钮黑环，网页端是浏览器默认（部分安卓/Chrome 为靛紫）**，两边不一致是用户选择的，不是漏改。
 
